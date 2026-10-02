@@ -62,16 +62,16 @@ export default function PhoneAuthScreen() {
         {!confirmation ? (
           <>
             <Text style={styles.helper}>Verify your number to get started. It is never shown to anyone you connect with.</Text>
-            <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+            <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" testID="phone-input" value={phone} onChangeText={setPhone} />
             {error && <Text style={styles.error}>{error}</Text>}
-            <Button label="Send code" onPress={handleSendCode} loading={loading} />
+            <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
           </>
         ) : (
           <>
             <Text style={styles.helper}>{`Enter the code sent to ${phone}`}</Text>
-            <LabeledField label="verification code" placeholder="123456" keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={6} />
+            <LabeledField label="verification code" placeholder="123456" keyboardType="number-pad" testID="verify-input" value={code} onChangeText={setCode} maxLength={6} />
             {error && <Text style={styles.error}>{error}</Text>}
-            <Button label="Verify" onPress={handleVerifyCode} loading={loading} />
+            <Button label="Verify" onPress={handleVerifyCode} loading={loading} testID="verify" />
             <Button label="Send another code" variant="secondary" onPress={handleSendCode} disabled={loading} />
             <TouchableOpacity disabled={loading} onPress={() => { setConfirmation(null); setCode(''); setError(null); }}>
               <Text style={styles.helper}>Use another number</Text>

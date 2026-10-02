@@ -73,6 +73,12 @@
       "fieldPath": "deleteAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "collectionGroup": "accountHolds",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

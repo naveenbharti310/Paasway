@@ -1,0 +1,15 @@
+appId: com.passway.app
+---
+- launchApp
+- assertVisible: "What is your date of birth?"
+- tapOn:
+    id: "age-day"
+- inputText: "01"
+- inputText: "05"
+- inputText: "1990"
+- tapOn:
+    id: "age-continue"
+- extendedWaitUntil:
+    visible:
+      id: "generate"
+    timeout: 20000

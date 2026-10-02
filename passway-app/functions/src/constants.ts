@@ -17,3 +17,5 @@ export const MAX_MESSAGE_LENGTH = 2000;
 export const MAX_REASON_LENGTH = 200;
 export const RETENTION_PAGE_SIZE = 200;
 export const IDLE_SWEEP_BATCH = 100;
+export const FLAGS_BEFORE_REVIEW = 3;
+export const REPORTED_HOLD_MS = 180 * DAY_MS;

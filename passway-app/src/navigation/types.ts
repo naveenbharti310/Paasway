@@ -9,9 +9,11 @@ export type RootStackParamList = {
   Request: { requestId: string; requesterName: string; requestedAt: number; tidCreatedAt: number; expiresAt: number };
   Chat: { connectionId: string };
   Ended: { outcome?: EndOutcome } | undefined;
+  Settings: undefined;
 };
 
 export type AuthStackParamList = {
+  Welcome: undefined;
   PhoneAuth: undefined;
 };
 

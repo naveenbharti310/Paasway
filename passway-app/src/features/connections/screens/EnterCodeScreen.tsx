@@ -120,6 +120,7 @@ export default function EnterCodeScreen() {
           {digits.map((digit, index) => (
             <TextInput
               key={index}
+              testID={`code-box-${index}`}
               ref={(ref) => { inputs.current[index] = ref; }}
               style={[styles.otpBox, digit ? styles.otpBoxFilled : undefined]}
               maxLength={1}
@@ -129,9 +130,9 @@ export default function EnterCodeScreen() {
             />
           ))}
         </View>
-        <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} />
+        <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} testID="name-input" />
         {error && <Text style={styles.error}>{error}</Text>}
-        <Button label="Connect" onPress={handleConnect} loading={loading} />
+        <Button label="Connect" onPress={handleConnect} loading={loading} testID="connect" />
       </View>
     </View>
   );

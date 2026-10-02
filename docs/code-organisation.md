@@ -9,6 +9,9 @@ Screens and their callable wrappers live with the feature that owns them.
 | `passway-app/src/features/auth/` | Phone verification and user document creation |
 | `passway-app/src/features/connections/` | Generate and enter a code, review a request, end a connection, find an active connection after restart |
 | `passway-app/src/features/chat/` | Conversation screen and message sending |
+| `passway-app/src/features/onboarding/` | Welcome pages, age check and the under 18 screen |
+| `passway-app/src/features/account/` | Age confirmation and account deletion callables |
+| `passway-app/src/features/settings/` | Name, safety tips, sign out and account deletion |
 | `passway-app/src/features/profile/` | Read and save the default display name |
 | `passway-app/src/features/safety/` | Submit a report or block a person |
 | `passway-app/src/services/` | Device location, notification registration and error messages |
@@ -31,6 +34,7 @@ Shared components should not import feature code. A feature may use another feat
 | `functions/src/handlers/tids.ts` | Generate, redeem and deactivate temporary codes |
 | `functions/src/handlers/connections.ts` | Accept or decline a request, end a connection and run the hourly idle sweep |
 | `functions/src/handlers/messages.ts` | Validate and store messages |
+| `functions/src/handlers/accounts.ts` | Confirm age and delete an account |
 | `functions/src/handlers/reports.ts` | Store reports, block people, end those conversations and extend retention |
 | `functions/src/config.ts` | Region, instance limits and the App Check parameter |
 | `functions/src/services/connections.ts` | Shared logic for ending connections and closing idle ones |
@@ -38,7 +42,7 @@ Shared components should not import feature code. A feature may use another feat
 | `functions/src/lib/blocks.ts` | Record and check two way blocks |
 | `functions/src/lib/logger.ts` | Structured logging |
 | `functions/src/lib/firebase.ts` | Initialise the Admin SDK and expose the database client |
-| `functions/src/lib/accounts.ts` | Check whether an account is banned |
+| `functions/src/lib/accounts.ts` | Check that an account is active, has a confirmed age and has no hold, and validate birth dates |
 | `functions/src/lib/rateLimits.ts` | Enforce the existing transaction based rate limits |
 | `functions/src/lib/tid.ts` | Generate a candidate code using secure randomness |
 | `functions/src/lib/validation.ts` | Validate callable input and participant identity |
@@ -46,7 +50,7 @@ Shared components should not import feature code. A feature may use another feat
 | `functions/src/handlers/retention.ts` | Retry message retention after a connection changes |
 | `functions/src/constants.ts` | Timing, limits and geohash precision |
 | `functions/src/geo.ts` | Geohash encoding and neighbouring cells |
-| `functions/src/moderation.ts` | Message screening hook |
+| `functions/src/moderation.ts` | Contact detection, scam rules and the Cloud Natural Language classifier |
 | `functions/src/push.ts` | Expo notification delivery without message content |
 
 Handlers use `authedCallable` and import shared services directly. They should not import the deployment entry point or each other.
@@ -63,6 +67,6 @@ Handlers use `authedCallable` and import shared services directly. They should n
 
 ## Tests
 
-Backend regression tests are in `functions/test/`. Security rule tests are in `test/`. The backend integration tests use the local Firestore emulator and refuse to run against a production database.
+Backend regression tests are in `functions/test/`. Security rule tests are in `test/`. Device flows for Maestro are in `passway-app/.maestro/`. The backend integration tests use the local Firestore emulator and refuse to run against a production database.
 
 The initial folder reorganisation preserved behaviour. Subsequent fixes are recorded in [the code audit](code-audit.md).

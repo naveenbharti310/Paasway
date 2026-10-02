@@ -48,14 +48,19 @@ export default function GenerateScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.brand}>Passway</Text>
+      <View style={styles.top}>
+        <Text style={styles.brand}>Passway</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel="Settings" testID="open-settings">
+          <Text style={styles.settings}>Settings</Text>
+        </TouchableOpacity>
+      </View>
       <View style={styles.center}>
         <IconBadge glyph="\u2318" />
         <Text style={styles.helper}>Met someone new? Generate a code to connect.</Text>
-        <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} />
+        <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} testID="name-input" />
         {error && <Text style={styles.error}>{error}</Text>}
-        <Button label="Generate code" onPress={handleGenerate} loading={loading} />
-        <TouchableOpacity disabled={loading} onPress={() => navigation.navigate('EnterCode')}>
+        <Button label="Generate code" onPress={handleGenerate} loading={loading} testID="generate" />
+        <TouchableOpacity disabled={loading} onPress={() => navigation.navigate('EnterCode')} testID="have-code">
           <Text style={styles.link}>Have a code instead?</Text>
         </TouchableOpacity>
       </View>
@@ -65,7 +70,9 @@ export default function GenerateScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  brand: { fontSize: 16, fontWeight: '600', color: colors.textPrimary, paddingBottom: 16, borderBottomWidth: 0.5, borderBottomColor: colors.border },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 0.5, borderBottomColor: colors.border },
+  brand: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  settings: { fontSize: 14, color: colors.textSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   helper: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', maxWidth: 220, lineHeight: 19 },
   error: { fontSize: 12, color: colors.danger, alignSelf: 'flex-start' },

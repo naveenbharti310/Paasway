@@ -8,6 +8,7 @@ class Reference {
   constructor(db, path) { this.db = db; this.path = path; this.id = path.split('/').pop(); }
   collection(name) { return new Query(this.db, `${this.path}/${name}`); }
   async get() { const snap = new Snapshot(this, this.db.values.get(this.path)); this.db.afterRead?.(this.path); return snap; }
+  async delete() { this.db.values.delete(this.path); }
 }
 const OPS = { '==': (a, b) => a === b, '<': (a, b) => a < b, '>': (a, b) => a > b, '<=': (a, b) => a <= b, '>=': (a, b) => a >= b };
 function list(db, values, query) {
@@ -19,7 +20,7 @@ function list(db, values, query) {
 class Query {
   constructor(db, path, cap = Infinity, cursor = '', filters = []) { this.db = db; this.path = path; this.cap = cap; this.cursor = cursor; this.filters = filters; }
   where(field, op, value) { return new Query(this.db, this.path, this.cap, this.cursor, [...this.filters, [field, op, value]]); }
-  async get() { return { docs: list(this.db, this.db.values, this) }; }
+  async get() { const docs = list(this.db, this.db.values, this); return { docs, empty: docs.length === 0, size: docs.length }; }
   doc(id = `auto${String(++this.db.sequence).padStart(6, '0')}`) { return new Reference(this.db, `${this.path}/${id}`); }
   orderBy() { return this; }
   limit(cap) { return new Query(this.db, this.path, cap, this.cursor, this.filters); }

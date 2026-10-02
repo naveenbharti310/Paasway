@@ -5,3 +5,4 @@ export { respondToRequest, endConnection, closeIdleConnectionsJob } from './hand
 export { sendMessage } from './handlers/messages';
 export { fileReport, blockUser } from './handlers/reports';
 export { syncConnectionRetention } from './handlers/retention';
+export { confirmAge, deleteAccount } from './handlers/accounts';

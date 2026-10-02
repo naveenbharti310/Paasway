@@ -20,6 +20,12 @@ function outcomeFor(connection: Connection | null, uid: string): EndOutcome {
   return 'ended';
 }
 
+// Shown under a received message the server flagged. Only the recipient sees it.
+const WARNINGS: Partial<Record<Message['moderationFlag'], string>> = {
+  scam_suspected: 'This looks like a common scam. Never send money, codes or card details. Tap to report.',
+  harassment_suspected: 'This message may be abusive. You can end, block or report this chat. Tap to report.',
+};
+
 const REPORT_REASONS = [
   'Inappropriate messages',
   'Asked for money or gifts',
@@ -140,7 +146,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
         <Text style={styles.headerLabel}>{otherName || 'Loading'}</Text>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options">
+        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" testID="chat-options">
           <Text style={styles.menuGlyph}>&#8942;</Text>
         </TouchableOpacity>
       </View>
@@ -150,15 +156,26 @@ export default function ChatScreen() {
         data={messages}
         keyExtractor={(item) => item.messageId}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={[styles.bubble, item.senderId === currentUserId ? styles.bubbleMine : styles.bubbleTheirs]}>
-            <Text style={item.senderId === currentUserId ? styles.bubbleTextMine : styles.bubbleTextTheirs}>{item.content}</Text>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const mine = item.senderId === currentUserId;
+          const warning = !mine ? WARNINGS[item.moderationFlag] : undefined;
+          return (
+            <View style={mine ? styles.rowMine : styles.rowTheirs}>
+              <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+                <Text style={mine ? styles.bubbleTextMine : styles.bubbleTextTheirs}>{item.content}</Text>
+              </View>
+              {warning && (
+                <TouchableOpacity onPress={() => setReportVisible(true)} accessibilityRole="button" accessibilityHint="Opens the report options">
+                  <Text style={styles.warning}>{warning}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        }}
       />
       <View style={styles.inputRow}>
-        <TextInput style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" maxLength={2000} editable={!ending && !submitting && connection?.status === 'active'} />
-        <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message">
+        <TextInput testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" maxLength={2000} editable={!ending && !submitting && connection?.status === 'active'} />
+        <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message">
           <Text style={styles.sendGlyph}>{sending ? 'Sending' : 'Send'}</Text>
         </TouchableOpacity>
       </View>
@@ -209,6 +226,9 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  rowMine: { alignItems: 'flex-end' },
+  rowTheirs: { alignItems: 'flex-start' },
+  warning: { fontSize: 12, color: colors.danger, maxWidth: 260, marginTop: 4, lineHeight: 16 },
   container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
   error: { fontSize: 12, color: colors.danger, paddingVertical: 8 },
   notice: { fontSize: 12, color: colors.textSecondary, paddingVertical: 8 },

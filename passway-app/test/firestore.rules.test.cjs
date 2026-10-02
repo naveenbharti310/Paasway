@@ -45,3 +45,9 @@ test('signed out requests are denied', async () => { await assertFails(getDoc(do
 test('clients cannot read or write blocks', async () => { await assertFails(getDoc(doc(user(), 'blocks/alice:bob'))); await assertFails(setDoc(doc(user('bob'), 'blocks/bob:alice'), { blockerId: 'bob' })); });
 test('a participant can find their active connection', async () => { await assertSucceeds(getDocs(query(collection(user('bob'), 'connections'), where('userB', '==', 'bob'), where('status', '==', 'active')))); await assertSucceeds(getDocs(query(collection(user(), 'connections'), where('userA', '==', 'alice'), where('status', '==', 'active')))); });
 test('an unscoped connection query is denied', async () => { await assertFails(getDocs(query(collection(user('carol'), 'connections'), where('status', '==', 'active')))); });
+test('clients cannot read account holds', async () => { await assertFails(getDoc(doc(user(), 'accountHolds/any'))); });
+test('clients cannot mark their own age as confirmed or clear moderation flags', async () => {
+  await assertFails(updateDoc(doc(user(), 'users/alice'), { ageConfirmedAt: 1 }));
+  await assertFails(updateDoc(doc(user(), 'users/alice'), { flagCount: 0 }));
+  await assertFails(setDoc(doc(user('carol'), 'users/carol'), { userId: 'carol', status: 'active', createdAt: 1, ageConfirmedAt: 1 }));
+});

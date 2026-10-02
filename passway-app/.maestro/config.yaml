@@ -1,0 +1,5 @@
+# Run with: maestro test .maestro
+# Uses Firebase test phone numbers. Add them under Authentication > Sign in
+# method > Phone > Phone numbers for testing before running.
+flows:
+  - "flows/*"

@@ -40,14 +40,15 @@ Global options in `functions/src/config.ts` set the region, an instance ceiling 
 
 | Collection | Written by | Read by clients | Deleted by |
 | --- | --- | --- | --- |
-| `users/{uid}` | Client creates its own profile, functions change status | Owner only | Kept for moderation history |
+| `users/{uid}` | Client creates its own profile, functions set age, status and flags | Owner only | When the person deletes their account |
 | `tids/{code}` | Functions | Never | TTL at code expiry |
 | `connectionRequests/{id}` | Functions | The two participants | TTL after 72 hours |
 | `connections/{id}` | Functions | The two participants | TTL after the retention date set when it ends |
 | `connections/{id}/messages/{id}` | Functions | The two participants | TTL 72 hours after sending, extended to the connection's hold when it ends or is reported |
 | `reports/{id}` | Functions | Never | TTL after 30 days |
 | `blocks/{blocker}:{blocked}` | Functions | Never | Kept |
-| `rateLimits/{uid}_{name}` | Functions | Never | TTL after the window |
+| `rateLimits/{uid}_{name}` | Functions | Never | TTL after the window, or when the account is deleted |
+| `accountHolds/{phoneHash}` | Functions | Never | TTL when the hold ends |
 
 Indexes are declared in `firestore.indexes.json`. The composite index on `connections (status, lastActivityAt)` serves the idle sweep. The app's lookup of an active conversation after restart uses equality filters only, so Firestore serves it from single field indexes.
 
@@ -60,11 +61,44 @@ Indexes are declared in `firestore.indexes.json`. The composite index on `connec
 | Contracts | `src/types/contracts.ts` | Request and response types for every callable |
 | Features | `src/features/*` | Screens and their API wrappers |
 | Device services | `src/services/*` | Location, notifications and error messages |
-| Navigation | `src/navigation/*` | Chooses sign in or the main flow, and reopens an active conversation after restart |
+| Navigation | `src/navigation/*` | Chooses welcome and sign in, the age check, or the main flow, and reopens an active conversation after restart |
 
 Native Firebase keeps the session on the device, so people stay signed in across restarts. Phone verification uses Play Integrity on Android and silent push on iOS, falling back to a reCAPTCHA page only when needed. This removed the old web based verification package, which no longer works with current Expo releases.
 
 Because the app now uses native modules, it runs in a development build rather than Expo Go. See the app README for build steps.
+
+## Onboarding and age check
+
+1. A new install shows four welcome pages that explain codes, proximity, the 72 hour chat and the 18 and over rule, then opens phone sign in.
+2. After sign in the navigator asks the server for the account stage. A new account must enter a date of birth before it can use anything else.
+3. `confirmAge` checks the date on the server. Only the time of confirmation is stored, never the date of birth.
+4. A person under 18 sees a screen that lets them delete the account or sign out. The phone number gets a hold that ends on their 18th birthday, so a second attempt with a different date does not work.
+5. Every callable except `confirmAge` and `deleteAccount` runs `assertAccountActive`, which rejects accounts without a confirmed age, banned accounts and phone numbers with a ban hold.
+
+## Account deletion
+
+Settings has a Delete account action, as Apple and Google require. `deleteAccount` does the following in order.
+
+1. Ends every active conversation with the reason `account_deleted` and applies the normal 72 hour retention.
+2. Turns off any live code.
+3. Writes a hold keyed by a hash of the phone number when the account was reported or banned. A banned hold never expires. A reported hold lasts 180 days. An existing hold is never lowered.
+4. Deletes rate limit records, the user document and the sign in account.
+
+Signing up again with the same number brings back the hold, so deletion cannot be used to escape a ban. The hash uses a fixed prefix and the raw number is not stored.
+
+## Message screening
+
+`functions/src/moderation.ts` screens every message before it is stored.
+
+| Layer | What it does |
+| --- | --- |
+| Contact details | Detects phone numbers, emails, handles and messaging apps |
+| Scam rules | Scores one time code requests, payment requests, amounts, investment offers, gift cards, urgency, links and remote access apps. A score of 2 or more is flagged. Sharing contact details early adds one point |
+| Google Cloud Natural Language | `documents:moderateText` scores toxicity, insults, threats, sexual content and finance. Finance confidence adds to the scam score |
+
+The classifier call uses the function's own service account, so no API key is stored. It times out after 2.5 seconds and falls back to the rules so a slow call never blocks chat. Set `MODERATION_PROVIDER=rules` to skip the external call.
+
+Flagged messages are still delivered, with a warning shown only to the recipient. Tapping the warning opens the report screen. Each flag adds to the sender's `flagCount`. After 3 flags an active account is marked `reported` for review.
 
 ## Review findings and changes
 
@@ -98,21 +132,21 @@ Two overrides are in place. `uuid` is raised to 11.1.1 in both packages because 
 
 ## Validation
 
-1. Backend: 78 regression tests, including blocks in both directions, message expiry, idle sweep, private message notifications and contact detection.
-2. Security rules: 22 tests against the Firestore emulator, including denied access to blocks and allowed scoped lookups of an active connection.
-3. Integration: 8 tests against the Firestore emulator using real transactions, including a block stopping a later redemption and the idle sweep using its composite index.
+1. Backend: 109 regression tests, including age checks, holds after deletion, account deletion, scam scoring, classifier fallback and flag escalation.
+2. Security rules: 24 tests against the Firestore emulator, including denied access to holds and clients being unable to set their own age or flag count.
+3. Integration: 9 tests against the Firestore emulator using real transactions, including account deletion ending conversations and leaving a hold.
 4. TypeScript checks for the app and backend.
 5. Android and iOS JavaScript bundles from a clean install.
-6. A native prebuild in a temporary folder with placeholder Firebase files, confirming the Firebase, App Check, location, notification and build property plugins generate valid native projects.
+6. Maestro flows for onboarding, age check, code generation and deletion, ready to run on a device. See [device testing](device-testing.md).
 
 No signed native build, physical device test or deployment to a live Firebase project was performed.
 
 ## Still needed before release
 
 1. Create the Firebase project, register both apps, download the native config files, register App Check with Play Integrity and App Attest, and add debug tokens for development devices.
-2. Build development clients with EAS and test the full flow on two physical devices: sign in, location prompt, code exchange, notifications, chat, block, report and restart recovery.
-3. Deploy functions, rules, indexes and TTL policies to a staging project first, then confirm TTL policies are active in the console.
-4. Connect a real scam and harassment classifier behind `screenMessage` and build a review process for reports and flagged accounts.
-5. Add account deletion inside the app, which Apple and Google require, without letting a banned person escape a ban by deleting and signing up again.
-6. Add onboarding, age confirmation, a settings screen, crash reporting and history beyond the latest 200 messages.
+2. Enable the Cloud Natural Language API in the same Google Cloud project.
+3. Build development clients with EAS and work through [device testing](device-testing.md) on two physical phones.
+4. Deploy functions, rules, indexes and TTL policies to a staging project first, then confirm TTL policies are active in the console.
+5. Build a review process for reports and flagged accounts.
+6. Add crash reporting and history beyond the latest 200 messages.
 7. Proximity still compares locations reported by the device. App Check raises the cost of faking calls but does not prove physical presence.

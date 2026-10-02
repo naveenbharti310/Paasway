@@ -1,3 +1,4 @@
+process.env.MODERATION_PROVIDER = 'rules';
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { MemoryFirestore } = require('./support.cjs');
@@ -31,7 +32,7 @@ function pending(extras = {}) {
   db.seed('connectionRequests/req1', { requestId: 'req1', tid: 'AB12', tidCreatedAt: createdAt, expiresAt: Date.now() + 300000, status: 'pending', generatorId: uid, generatorName: 'Alice', requesterId: other, requesterName: 'Bob', ...extras });
 }
 beforeEach(() => {
-  db = new MemoryFirestore().seed('users/alice', { status: 'active' }).seed('users/bob', { status: 'active' });
+  db = new MemoryFirestore().seed('users/alice', { status: 'active', ageConfirmedAt: 1 }).seed('users/bob', { status: 'active', ageConfirmedAt: 1 });
   firebase.db = db;
 });
 afterEach(() => { codeGenerator.randomTid = originalRandomTid; global.fetch = originalFetch; });
@@ -163,7 +164,7 @@ test('messages expire on their own and record connection activity', async () => 
 });
 test('a message notifies the other participant without its content', async () => {
   connection();
-  db.seed('users/bob', { status: 'active', pushToken: 'ExponentPushToken[bob]' });
+  db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, pushToken: 'ExponentPushToken[bob]' });
   const sent = [];
   global.fetch = async (_url, init) => { sent.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ data: { status: 'ok' } }) }; };
   await call(sendMessage, { connectionId: 'chat1', content: 'Secret plan' });
@@ -190,3 +191,129 @@ for (const sample of ['call me on +91 98765 43210', 'mail me at a.b@example.com'
 for (const sample of ['see you at 5', 'the cafe was lovely', 'meet @ 6 near gate 2', 'I have 2 dogs']) {
   test(`ignore ordinary text "${sample}"`, () => assert.equal(mentionsContactInfo(sample), false));
 }
+
+const { confirmAge, deleteAccount } = require('../lib/handlers/accounts');
+const accounts = require('../lib/lib/accounts');
+const moderation = require('../lib/moderation');
+const callWithPhone = (handler, data, user, phone = '+919876543210') => handler.run({ auth: { uid: user, token: { phone_number: phone } }, data });
+const adultBirth = '1990-05-01';
+const childBirth = `${new Date().getUTCFullYear() - 15}-01-01`;
+
+test('calculate age around a birthday', () => {
+  assert.equal(accounts.ageOn('2000-06-15', new Date(Date.UTC(2018, 5, 14))), 17);
+  assert.equal(accounts.ageOn('2000-06-15', new Date(Date.UTC(2018, 5, 15))), 18);
+});
+for (const value of ['1990-02-30', '1990/01/01', '', 12, '3000-01-01', '1800-01-01']) {
+  test(`reject invalid birth date ${JSON.stringify(value)}`, () => assert.throws(() => accounts.validBirthDate(value, new Date()), { code: 'invalid-argument' }));
+}
+test('an account must confirm its age before generating a code', async () => {
+  db.seed('users/alice', { status: 'active' });
+  await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'failed-precondition' });
+});
+test('an adult confirmation is stored without the birth date', async () => {
+  db.seed('users/carol', { status: 'active' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { confirmed: true });
+  const carol = db.read('users/carol');
+  assert.equal(typeof carol.ageConfirmedAt, 'number');
+  assert.equal(carol.phoneHash, accounts.phoneHash('+919876543210'));
+  assert.equal(JSON.stringify(carol).includes('1990'), false);
+});
+test('an under age answer cannot be changed by answering again', async () => {
+  db.seed('users/carol', { status: 'active' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: childBirth }, 'carol'), { confirmed: false });
+  await assert.rejects(callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { code: 'failed-precondition' });
+  assert.equal(db.read(`accountHolds/${accounts.phoneHash('+919876543210')}`).status, 'under_minimum');
+});
+test('a new account on the same phone keeps an under age hold', async () => {
+  db.seed('users/carol', { status: 'active' });
+  await callWithPhone(confirmAge, { birthDate: childBirth }, 'carol');
+  db.seed('users/carol2', { status: 'active' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol2'), { confirmed: false });
+});
+test('a new account on a banned phone is banned', async () => {
+  db.seed(`accountHolds/${accounts.phoneHash('+919876543210')}`, { status: 'banned' });
+  db.seed('users/carol', { status: 'active' });
+  await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol');
+  assert.equal(db.read('users/carol').status, 'banned');
+});
+test('a ban hold on the phone stops an account even if its status was not copied', async () => {
+  db.seed('accountHolds/h1', { status: 'banned' });
+  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, phoneHash: 'h1' });
+  await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'permission-denied' });
+});
+
+function fakeAuth() { const deleted = []; firebase.auth = { deleteUser: async (id) => { deleted.push(id); } }; return deleted; }
+test('delete an account, end its chats and deactivate its codes', async () => {
+  const deleted = fakeAuth();
+  connection();
+  code();
+  db.seed('rateLimits/alice_generate', { events: [] });
+  await callWithPhone(deleteAccount, {}, uid);
+  assert.equal(db.read('users/alice'), undefined);
+  assert.equal(db.read('rateLimits/alice_generate'), undefined);
+  assert.equal(db.read('connections/chat1').status, 'ended');
+  assert.equal(db.read('connections/chat1').endReason, 'account_deleted');
+  assert.equal(db.read('tids/AB12').status, 'deactivated');
+  assert.deepEqual(deleted, [uid]);
+});
+test('deleting a reported account leaves a review hold on the phone', async () => {
+  fakeAuth();
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1 });
+  await callWithPhone(deleteAccount, {}, uid);
+  assert.equal(db.read(`accountHolds/${accounts.phoneHash('+919876543210')}`).status, 'reported');
+});
+test('deleting an account never lowers a ban hold', async () => {
+  fakeAuth();
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed(`accountHolds/${hash}`, { status: 'banned' });
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: hash });
+  await callWithPhone(deleteAccount, {}, uid);
+  assert.equal(db.read(`accountHolds/${hash}`).status, 'banned');
+});
+test('deleting an account in good standing leaves no hold', async () => {
+  fakeAuth();
+  await callWithPhone(deleteAccount, {}, uid);
+  assert.equal([...db.values.keys()].some((path) => path.startsWith('accountHolds/')), false);
+});
+test('repeat deletion succeeds after the sign in record is gone', async () => {
+  firebase.auth = { deleteUser: async () => { const error = new Error('gone'); error.code = 'auth/user-not-found'; throw error; } };
+  await call(deleteAccount, {});
+  assert.equal(db.read('users/alice'), undefined);
+});
+
+for (const sample of ['Please share the OTP you just got', 'Send 5000 rupees to my UPI urgently', 'Buy me google play cards and send the numbers', 'Guaranteed returns on this crypto trading platform https://x.example', 'Install AnyDesk so I can help you']) {
+  test(`flag a scam message "${sample}"`, async () => assert.equal((await screenMessage(sample, 9999)).flag, 'scam_suspected'));
+}
+for (const sample of ['Can you send the photo from the park?', 'Lunch was 300 rupees, not bad', 'I work in investment banking', 'Running late, see you in 10']) {
+  test(`allow an ordinary message "${sample}"`, async () => assert.equal((await screenMessage(sample, 9999)).flag, 'none'));
+}
+test('the classifier flags harassment', async () => {
+  const original = { ...moderation.moderationDeps };
+  moderation.moderationDeps.provider = () => 'google';
+  moderation.moderationDeps.classify = async () => [{ name: 'Insult', confidence: 0.93 }];
+  try { assert.equal((await screenMessage('you are awful', 9999)).flag, 'harassment_suspected'); } finally { Object.assign(moderation.moderationDeps, original); }
+});
+test('a classifier failure falls back to the rules', async () => {
+  const original = { ...moderation.moderationDeps };
+  moderation.moderationDeps.provider = () => 'google';
+  moderation.moderationDeps.classify = async () => { throw new Error('down'); };
+  try {
+    assert.equal((await screenMessage('Hello there', 9999)).flag, 'none');
+    assert.equal((await screenMessage('Share your OTP and send money to my bank account', 9999)).flag, 'scam_suspected');
+  } finally { Object.assign(moderation.moderationDeps, original); }
+});
+test('three flagged messages put the sender under review', async () => {
+  connection();
+  for (let i = 0; i < 3; i++) await call(sendMessage, { connectionId: 'chat1', content: 'Share the OTP and send money to my UPI' });
+  const alice = db.read('users/alice');
+  assert.equal(alice.flagCount, 3);
+  assert.equal(alice.status, 'reported');
+  const flags = [...db.values.entries()].filter(([path]) => path.startsWith('connections/chat1/messages/')).map(([, m]) => m.moderationFlag);
+  assert.deepEqual(flags, ['scam_suspected', 'scam_suspected', 'scam_suspected']);
+});
+test('a flagged message does not lower a ban', async () => {
+  connection();
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, flagCount: 5 });
+  await call(sendMessage, { connectionId: 'chat1', content: 'Share the OTP and send money to my UPI' });
+  assert.equal(db.read('users/alice').status, 'reported');
+});

@@ -55,8 +55,8 @@ export default function RequestScreen() {
         {expired && <Text style={styles.error}>This request has expired.</Text>}
         {expired && <Button label="Start again" onPress={() => navigation.replace('Generate')} />}
         <View style={styles.row}>
-          <Button label="Decline" variant="secondary" onPress={() => handleRespond(false)} loading={loading === 'decline'} disabled={!!loading} style={styles.half} />
-          <Button label="Accept" onPress={() => handleRespond(true)} loading={loading === 'accept'} disabled={!!loading || expired} style={styles.half} />
+          <Button label="Decline" testID="decline" variant="secondary" onPress={() => handleRespond(false)} loading={loading === 'decline'} disabled={!!loading} style={styles.half} />
+          <Button label="Accept" testID="accept" onPress={() => handleRespond(true)} loading={loading === 'accept'} disabled={!!loading || expired} style={styles.half} />
         </View>
       </View>
     </View>

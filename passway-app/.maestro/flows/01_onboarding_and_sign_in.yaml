@@ -1,0 +1,30 @@
+appId: com.passway.app
+env:
+  PHONE: "+919999900001"
+  OTP: "123456"
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Meet someone, keep your number"
+- tapOn:
+    id: "welcome-next"
+- tapOn:
+    id: "welcome-next"
+- tapOn:
+    id: "welcome-next"
+- assertVisible: "Passway is for people aged 18 and over."
+- tapOn:
+    id: "get-started"
+- tapOn:
+    id: "phone-input"
+- inputText: ${PHONE}
+- tapOn:
+    id: "send-code"
+- tapOn:
+    id: "verify-input"
+- inputText: ${OTP}
+- tapOn:
+    id: "verify"
+- extendedWaitUntil:
+    visible: "What is your date of birth?"
+    timeout: 20000

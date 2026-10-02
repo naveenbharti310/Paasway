@@ -1,3 +1,4 @@
+process.env.MODERATION_PROVIDER = 'rules';
 const { test, beforeEach, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8080') throw new Error('These tests require the local Firestore emulator.');
@@ -17,7 +18,7 @@ const collection = (name) => db.collection(name);
 beforeEach(async () => {
   const response = await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-passway/databases/(default)/documents', { method: 'DELETE' });
   assert.equal(response.ok, true);
-  await Promise.all(['alice', 'bob', 'carol'].map((uid) => collection('users').doc(uid).set({ userId: uid, status: 'active', createdAt: Date.now() })));
+  await Promise.all(['alice', 'bob', 'carol'].map((uid) => collection('users').doc(uid).set({ userId: uid, status: 'active', createdAt: Date.now(), ageConfirmedAt: Date.now() })));
 });
 afterEach(() => { codeGenerator.randomTid = originalRandom; });
 after(async () => { await db.terminate(); await Promise.all(getApps().map((app) => app.delete())); });
@@ -91,4 +92,18 @@ test('the idle sweep uses the composite query and closes only idle connections',
   assert.equal((await collection('connections').doc('old').get()).data().status, 'ended');
   assert.equal((await collection('connections').doc('fresh').get()).data().status, 'active');
   assert.ok((await collection('connections').doc('old').collection('messages').doc('m1').get()).data().deleteAt);
+});
+test('account deletion ends open chats using real queries', async () => {
+  const firebase = require('../lib/lib/firebase');
+  const { deleteAccount } = require('../lib/handlers/accounts');
+  const original = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  try {
+    await seedConnection();
+    await seedCode();
+    await call(deleteAccount, {}, 'alice');
+    assert.equal((await collection('users').doc('alice').get()).exists, false);
+    assert.equal((await collection('connections').doc('chat1').get()).data().status, 'ended');
+    assert.equal((await collection('tids').doc('AB12').get()).data().status, 'deactivated');
+  } finally { firebase.auth = original; }
 });

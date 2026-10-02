@@ -1,7 +1,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
-import { assertNotBanned } from '../lib/accounts';
+import { assertAccountActive } from '../lib/accounts';
 import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { randomTid } from '../lib/tid';
@@ -22,7 +22,7 @@ export const generateTid = authedCallable(async (uid, data) => {
     const tid = randomTid();
     const ref = db.collection('tids').doc(tid);
     const result = await db.runTransaction(async (tx) => {
-      await assertNotBanned(uid, tx);
+      await assertAccountActive(uid, tx);
       const existing = await tx.get(ref);
       if (existing.exists) return null;
       const createdAt = Date.now();
@@ -45,12 +45,12 @@ export const redeemTid = authedCallable(async (uid, data) => {
   const tidRef = db.collection('tids').doc(tid);
   const requestRef = db.collection('connectionRequests').doc();
   const result = await db.runTransaction(async (tx) => {
-    await assertNotBanned(uid, tx);
+    await assertAccountActive(uid, tx);
     const snap = await tx.get(tidRef);
     const code = snap.data();
     if (!snap.exists || code?.status !== 'active' || code.expiresAt <= Date.now()) throw new HttpsError('not-found', INACTIVE_CODE);
     if (code.generatorId === uid) throw new HttpsError('invalid-argument', 'You cannot use your own code.');
-    await assertNotBanned(code.generatorId, tx);
+    await assertAccountActive(code.generatorId, tx);
     await assertNotBlocked(tx, uid, code.generatorId);
     // The proximity failure uses the same wording as an inactive code so that
     // a remote guess cannot learn that the code exists.

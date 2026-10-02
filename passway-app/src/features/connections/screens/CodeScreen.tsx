@@ -81,7 +81,7 @@ export default function CodeScreen() {
       <View style={styles.center}>
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>code</Text>
-          <Text style={styles.codeText}>{tid}</Text>
+          <Text style={styles.codeText} testID="code-text">{tid}</Text>
         </View>
         <Text style={[styles.timer, urgent && styles.timerUrgent]}>{`Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`}</Text>
         <Text style={styles.helper}>Show this to the person you just met</Text>

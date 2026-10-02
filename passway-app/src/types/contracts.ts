@@ -22,3 +22,6 @@ export interface FileReportRequest { connectionId: string; reportedId: string; r
 export interface FileReportResponse { reportId: string }
 
 export type Empty = Record<string, never>;
+
+export interface ConfirmAgeRequest { birthDate: string }
+export interface ConfirmAgeResponse { confirmed: boolean }

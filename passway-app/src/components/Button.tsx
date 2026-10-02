@@ -8,9 +8,10 @@ interface Props {
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  testID?: string;
 }
 
-export default function Button({ label, onPress, variant = 'primary', loading, disabled, style }: Props) {
+export default function Button({ label, onPress, variant = 'primary', loading, disabled, style, testID }: Props) {
   const isPrimary = variant === 'primary';
   return (
     <TouchableOpacity
@@ -19,6 +20,7 @@ export default function Button({ label, onPress, variant = 'primary', loading, d
       disabled={disabled || loading}
       accessibilityRole="button"
       accessibilityLabel={label}
+      testID={testID}
     >
       {loading ? (
         <ActivityIndicator color={isPrimary ? colors.onAccent : colors.textPrimary} />

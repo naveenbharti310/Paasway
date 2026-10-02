@@ -1,0 +1,20 @@
+appId: com.passway.app
+---
+- launchApp
+- setLocation:
+    latitude: 28.6139
+    longitude: 77.2090
+- tapOn:
+    id: "name-input"
+- eraseText
+- inputText: "Tester One"
+- tapOn:
+    id: "generate"
+- extendedWaitUntil:
+    visible:
+      id: "code-text"
+    timeout: 20000
+- assertVisible: "Expires in.*"
+- tapOn: "Cancel"
+- assertVisible:
+    id: "generate"

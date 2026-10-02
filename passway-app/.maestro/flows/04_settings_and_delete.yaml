@@ -1,0 +1,16 @@
+appId: com.passway.app
+---
+- launchApp
+- tapOn:
+    id: "open-settings"
+- assertVisible: "Staying safe"
+- scrollUntilVisible:
+    element:
+      id: "delete-account"
+- tapOn:
+    id: "delete-account"
+- assertVisible: "Delete your account?"
+- tapOn: "Delete account"
+- extendedWaitUntil:
+    visible: "Meet someone, keep your number"
+    timeout: 20000

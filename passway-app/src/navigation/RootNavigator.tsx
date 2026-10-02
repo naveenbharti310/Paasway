@@ -7,7 +7,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, signOut, type User } from '@react-native-firebase/auth';
 import { auth } from '../firebase/client';
 import { findActiveConnection } from '../features/connections/api/activeConnection';
-import { ensureUserDoc } from '../features/auth/api/ensureUser';
+import { ensureUserDoc, type AccountStage } from '../features/auth/api/ensureUser';
+import WelcomeScreen from '../features/onboarding/screens/WelcomeScreen';
+import AgeCheckScreen from '../features/onboarding/screens/AgeCheckScreen';
+import UnderAgeScreen from '../features/onboarding/screens/UnderAgeScreen';
+import SettingsScreen from '../features/settings/screens/SettingsScreen';
 import { registerForPush } from '../services/notifications';
 import PhoneAuthScreen from '../features/auth/screens/PhoneAuthScreen';
 import GenerateScreen from '../features/connections/screens/GenerateScreen';
@@ -27,6 +31,7 @@ export default function RootNavigator() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  const [stage, setStage] = useState<AccountStage>('needs_age');
   const [resumeConnectionId, setResumeConnectionId] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -44,12 +49,14 @@ export default function RootNavigator() {
       setUser(u);
       try {
         let resume: string | null = null;
+        let nextStage: AccountStage = 'needs_age';
         if (u) {
-          await ensureUserDoc(u.uid);
+          nextStage = await ensureUserDoc(u.uid);
           // Reopen a conversation that was still active when the app closed.
-          resume = await findActiveConnection(u.uid).catch(() => null);
+          if (nextStage === 'ready') resume = await findActiveConnection(u.uid).catch(() => null);
         }
         if (!active || currentVersion !== version) return;
+        setStage(nextStage);
         setResumeConnectionId(resume);
         setCheckingAuth(false);
         if (u) {
@@ -92,6 +99,9 @@ export default function RootNavigator() {
     );
   }
 
+  if (user && stage === 'under_minimum') return <UnderAgeScreen />;
+  if (user && stage === 'needs_age') return <AgeCheckScreen onResult={(confirmed) => setStage(confirmed ? 'ready' : 'under_minimum')} />;
+
   return (
     <NavigationContainer>
       {user ? (
@@ -102,9 +112,11 @@ export default function RootNavigator() {
           <Stack.Screen name="Request" component={RequestScreen} />
           <Stack.Screen name="Chat" component={ChatScreen} initialParams={resumeConnectionId ? { connectionId: resumeConnectionId } : undefined} />
           <Stack.Screen name="Ended" component={EndedScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       ) : (
         <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+          <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
           <AuthStack.Screen name="PhoneAuth" component={PhoneAuthScreen} />
         </AuthStack.Navigator>
       )}
