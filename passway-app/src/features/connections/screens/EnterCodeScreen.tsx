@@ -1,0 +1,122 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { db, app } from '../../../firebase/config';
+import { redeemTid } from '../api/connections';
+import { getCurrentLocation } from '../../../services/location';
+import { getSavedName, saveDefaultName } from '../../profile/api/profile';
+import { colors } from '../../../theme/colors';
+import ScreenHeader from '../../../components/ScreenHeader';
+import LabeledField from '../../../components/LabeledField';
+import Button from '../../../components/Button';
+
+export default function EnterCodeScreen() {
+  const navigation = useNavigation<any>();
+  const [digits, setDigits] = useState(['', '', '', '']);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const inputs = useRef<Array<TextInput | null>>([]);
+  const uid = getAuth(app).currentUser?.uid ?? '';
+
+  useEffect(() => {
+    if (!uid) return;
+    getSavedName(uid).then(setName).catch(() => {});
+  }, [uid]);
+
+  function updateDigit(index: number, value: string) {
+    const next = [...digits];
+    next[index] = value.slice(-1).toUpperCase();
+    setDigits(next);
+    if (value && index < 3) inputs.current[index + 1]?.focus();
+  }
+
+  async function handleConnect() {
+    const code = digits.join('');
+    if (code.length !== 4) {
+      setError('Enter all four characters');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Enter a name to show the other person');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { lat, lng } = await getCurrentLocation();
+      const result = await redeemTid(code, lat, lng, name.trim());
+      saveDefaultName(uid, name.trim()).catch(() => {});
+      setRequestId(result.requestId);
+    } catch (err: any) {
+      setError(err?.message ?? 'That code did not work. Check it and try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!requestId) return;
+    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), (snap) => {
+      const data = snap.data();
+      if (!data) return;
+      if (data.status === 'accepted') {
+        navigation.replace('Chat', { connectionId: data.connectionId });
+      } else if (data.status === 'declined' || data.status === 'expired') {
+        setError('That code is no longer available.');
+        setRequestId(null);
+      }
+    });
+    return unsubscribe;
+  }, [requestId]);
+
+  if (requestId) {
+    return (
+      <View style={styles.container}>
+        <ScreenHeader showBack={false} />
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.accentFill} />
+          <Text style={styles.helper}>Waiting for them to accept</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScreenHeader title="enter code" showBack />
+      <View style={styles.center}>
+        <Text style={styles.helper}>Enter the code they shared with you</Text>
+        <View style={styles.otpRow}>
+          {digits.map((digit, index) => (
+            <TextInput
+              key={index}
+              ref={(ref) => { inputs.current[index] = ref; }}
+              style={[styles.otpBox, digit ? styles.otpBoxFilled : undefined]}
+              maxLength={1}
+              value={digit}
+              onChangeText={(value) => updateDigit(index, value)}
+              autoCapitalize="characters"
+            />
+          ))}
+        </View>
+        <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} />
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Button label="Connect" onPress={handleConnect} loading={loading} />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  helper: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 220 },
+  otpRow: { flexDirection: 'row', gap: 8 },
+  otpBox: { width: 46, height: 54, borderWidth: 0.5, borderColor: colors.border, borderRadius: 10, textAlign: 'center', fontSize: 20, color: colors.textPrimary },
+  otpBoxFilled: { borderColor: colors.accentFill, borderWidth: 1.5 },
+  error: { fontSize: 12, color: colors.danger, alignSelf: 'flex-start' },
+});

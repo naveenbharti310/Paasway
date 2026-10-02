@@ -1,11 +1,14 @@
 {
   "name": "functions",
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "main": "lib/index.js",
   "private": true,
   "scripts": {
     "build": "tsc",
-    "deploy": "firebase deploy --only functions"
+    "deploy": "firebase deploy --only functions",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
