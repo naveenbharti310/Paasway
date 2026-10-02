@@ -1,17 +1,14 @@
+import { errorMessage } from '../../../services/errors';
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { auth, firebaseConfig } from '../../../firebase/config';
+import { auth, firebaseConfig, isFirebaseConfigured } from '../../../firebase/config';
 import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 
-// Phone auth on the Firebase JS SDK needs a reCAPTCHA challenge inside
-// React Native, expo-firebase-recaptcha supplies that as an invisible
-// modal. This is the standard way to do it in an Expo managed project
-// without moving onto @react-native-firebase and a custom native build.
 export default function PhoneAuthScreen() {
   const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
   const [phone, setPhone] = useState('');
@@ -21,24 +18,31 @@ export default function PhoneAuthScreen() {
   const [error, setError] = useState<string | null>(null);
 
   async function handleSendCode() {
-    if (!phone.trim()) {
+    if (loading) return;
+    if (!isFirebaseConfigured) {
+      setError('Firebase setup is missing. Add the project settings to your .env file.');
+      return;
+    }
+    if (!/^\+[1-9]\d{7,14}$/.test(phone.replace(/\s/g, ''))) {
       setError('Enter a phone number, with country code');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const result = await signInWithPhoneNumber(auth, phone.trim(), recaptchaVerifier.current!);
+      if (!recaptchaVerifier.current) throw new Error('Phone verification is not ready. Try again.');
+      const result = await signInWithPhoneNumber(auth, phone.replace(/\s/g, ''), recaptchaVerifier.current);
       setConfirmation(result);
-    } catch (err: any) {
-      setError(err?.message ?? 'Could not send a code. Check the number and try again.');
+    } catch (err: unknown) {
+      setError(errorMessage(err, 'Could not send a code. Check the number and try again.'));
     } finally {
       setLoading(false);
     }
   }
 
   async function handleVerifyCode() {
-    if (!confirmation || code.trim().length < 6) {
+    if (loading) return;
+    if (!confirmation || !/^\d{6}$/.test(code.trim())) {
       setError('Enter the 6 digit code');
       return;
     }
@@ -48,8 +52,8 @@ export default function PhoneAuthScreen() {
       await confirmation.confirm(code.trim());
       // Auth state flips on success, RootNavigator is listening and
       // swaps this screen out for the main stack on its own.
-    } catch (err: any) {
-      setError(err?.message ?? 'That code did not match. Try again.');
+    } catch (err: unknown) {
+      setError(errorMessage(err, 'That code did not match. Try again.'));
     } finally {
       setLoading(false);
     }
@@ -57,7 +61,7 @@ export default function PhoneAuthScreen() {
 
   return (
     <View style={styles.container}>
-      <FirebaseRecaptchaVerifierModal ref={recaptchaVerifier} firebaseConfig={firebaseConfig} attemptInvisibleVerification />
+      {isFirebaseConfigured && <FirebaseRecaptchaVerifierModal ref={recaptchaVerifier} firebaseConfig={firebaseConfig} attemptInvisibleVerification />}
       <Text style={styles.brand}>Passway</Text>
       <View style={styles.center}>
         <IconBadge glyph="\u25C8" />
@@ -74,6 +78,10 @@ export default function PhoneAuthScreen() {
             <LabeledField label="verification code" placeholder="123456" keyboardType="number-pad" value={code} onChangeText={setCode} maxLength={6} />
             {error && <Text style={styles.error}>{error}</Text>}
             <Button label="Verify" onPress={handleVerifyCode} loading={loading} />
+            <Button label="Send another code" variant="secondary" onPress={handleSendCode} disabled={loading} />
+            <TouchableOpacity disabled={loading} onPress={() => { setConfirmation(null); setCode(''); setError(null); }}>
+              <Text style={styles.helper}>Use another number</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>

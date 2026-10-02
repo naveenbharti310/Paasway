@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import { errorMessage } from '../../../services/errors';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { collection, query, orderBy, onSnapshot, doc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { db, app } from '../../../firebase/config';
+import { collection, query, orderBy, onSnapshot, doc, limitToLast } from 'firebase/firestore';
+import { db, auth } from '../../../firebase/config';
 import { sendMessage } from '../api/messages';
 import { endConnection } from '../../connections/api/connections';
 import { fileReport } from '../../safety/api/reports';
 import { colors } from '../../../theme/colors';
-import type { RootStackParamList } from '../../../navigation/types';
+import type { RootStackParamList, RootNavigationProp } from '../../../navigation/types';
 import { Message, Connection } from '../../../types/models';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -22,7 +22,7 @@ const REPORT_REASONS = [
 ];
 
 export default function ChatScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<ChatRouteProp>();
   const { connectionId } = params;
   const [messages, setMessages] = useState<Message[]>([]);
@@ -31,20 +31,30 @@ export default function ChatScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const currentUserId = getAuth(app).currentUser?.uid ?? '';
+  const [sending, setSending] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [safetyNotice, setSafetyNotice] = useState(false);
+  const navigatedAway = useRef(false);
+  const currentUserId = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), (snap) => {
-      setConnection((snap.data() as Connection) ?? null);
-    });
+      const data = (snap.data() as Connection) ?? null;
+      setConnection(data);
+      if ((!data || data.status === 'ended') && !navigatedAway.current) {
+        navigatedAway.current = true;
+        navigation.replace('Ended', { reported: data?.reportedBy === currentUserId });
+      }
+    }, (err) => setError(errorMessage(err, 'Could not load this connection.')));
     return unsubscribe;
-  }, [connectionId]);
+  }, [connectionId, navigation, currentUserId]);
 
   useEffect(() => {
-    const q = query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'asc'));
+    const q = query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'asc'), limitToLast(200));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map((d) => d.data() as Message));
-    });
+    }, (err) => setError(errorMessage(err, 'Could not load messages.')));
     return unsubscribe;
   }, [connectionId]);
 
@@ -52,29 +62,53 @@ export default function ChatScreen() {
   const otherName = connection ? (otherIsA ? connection.userAName : connection.userBName) : '';
   const otherId = connection ? (otherIsA ? connection.userA : connection.userB) : '';
 
+  function leaveChat(reported = false) {
+    if (navigatedAway.current) return;
+    navigatedAway.current = true;
+    navigation.replace('Ended', { reported });
+  }
+
   async function handleSend() {
     const text = draft.trim();
-    if (!text) return;
-    setDraft('');
-    await sendMessage(connectionId, text);
+    if (!text || sending || ending || submitting || connection?.status !== 'active') return;
+    setSending(true);
+    setError(null);
+    try {
+      const result = await sendMessage(connectionId, text);
+      setDraft((current) => current.trim() === text ? '' : current);
+      if (result.earlyContactShare) setSafetyNotice(true);
+    } catch (err) {
+      setError(errorMessage(err, 'Your message was not sent. Try again.'));
+    } finally {
+      setSending(false);
+    }
   }
 
   async function handleEnd() {
+    if (ending || submitting) return;
     setMenuVisible(false);
-    await endConnection(connectionId);
-    navigation.replace('Ended');
+    setEnding(true);
+    setError(null);
+    try {
+      await endConnection(connectionId);
+      leaveChat();
+    } catch (err) {
+      setError(errorMessage(err, 'Could not end the connection. Try again.'));
+    } finally {
+      setEnding(false);
+    }
   }
 
   async function handleReport(reason: string) {
+    if (submitting || ending || !otherId) return;
     setSubmitting(true);
+    setError(null);
     try {
       await fileReport(connectionId, otherId, reason);
       setReportVisible(false);
-      navigation.replace('Ended', { reported: true });
+      leaveChat(true);
     } catch (err) {
-      // A failed report should still leave the person able to try
-      // again or just end the connection from the menu instead.
-      console.warn('Report failed', err);
+      setError(errorMessage(err, 'Your report was not saved. Try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -88,6 +122,8 @@ export default function ChatScreen() {
           <Text style={styles.menuGlyph}>&#8942;</Text>
         </TouchableOpacity>
       </View>
+      {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+      {safetyNotice && <Text style={styles.notice}>Take your time before sharing contact details or moving to another app.</Text>}
       <FlatList
         data={messages}
         keyExtractor={(item) => item.messageId}
@@ -99,9 +135,9 @@ export default function ChatScreen() {
         )}
       />
       <View style={styles.inputRow}>
-        <TextInput style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" />
-        <TouchableOpacity onPress={handleSend} accessibilityLabel="Send message">
-          <Text style={styles.sendGlyph}>Send</Text>
+        <TextInput style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" maxLength={2000} editable={!ending && !submitting && connection?.status === 'active'} />
+        <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message">
+          <Text style={styles.sendGlyph}>{sending ? 'Sending' : 'Send'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -117,7 +153,7 @@ export default function ChatScreen() {
             >
               <Text style={styles.sheetRowDanger}>Report and end connection</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.sheetRow} onPress={handleEnd}>
+            <TouchableOpacity style={styles.sheetRow} onPress={handleEnd} disabled={ending || submitting}>
               <Text style={styles.sheetRowText}>End connection</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={() => setMenuVisible(false)}>
@@ -131,6 +167,7 @@ export default function ChatScreen() {
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => !submitting && setReportVisible(false)}>
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>What went wrong?</Text>
+            {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {REPORT_REASONS.map((reason) => (
               <TouchableOpacity key={reason} style={styles.sheetRow} onPress={() => handleReport(reason)} disabled={submitting}>
                 <Text style={styles.sheetRowText}>{reason}</Text>
@@ -148,6 +185,8 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
+  error: { fontSize: 12, color: colors.danger, paddingVertical: 8 },
+  notice: { fontSize: 12, color: colors.textSecondary, paddingVertical: 8 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
   headerLabel: { fontSize: 13, color: colors.textSecondary },
   menuGlyph: { fontSize: 18, color: colors.textSecondary, fontWeight: '700' },

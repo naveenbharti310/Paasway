@@ -1,8 +1,9 @@
+import { errorMessage } from '../../../services/errors';
+import type { RootNavigationProp } from '../../../navigation/types';
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { getAuth } from 'firebase/auth';
-import { app } from '../../../firebase/config';
+import { auth } from '../../../firebase/config';
 import { generateTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
@@ -12,18 +13,21 @@ import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 
 export default function GenerateScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootNavigationProp>();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const uid = getAuth(app).currentUser?.uid ?? '';
+  const uid = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
     if (!uid) return;
-    getSavedName(uid).then(setName).catch(() => {});
+    let active = true;
+    getSavedName(uid).then((saved) => { if (active) setName(saved); }).catch(() => console.warn('Saved name could not be loaded.'));
+    return () => { active = false; };
   }, [uid]);
 
   async function handleGenerate() {
+    if (loading) return;
     if (!name.trim()) {
       setError('Enter a name to show the other person');
       return;
@@ -33,10 +37,10 @@ export default function GenerateScreen() {
     try {
       const { lat, lng } = await getCurrentLocation();
       const { tid, expiresAt } = await generateTid(lat, lng, name.trim());
-      saveDefaultName(uid, name.trim()).catch(() => {});
+      void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
       navigation.navigate('Code', { tid, expiresAt });
-    } catch (err: any) {
-      setError(err?.message ?? 'Could not generate a code. Try again.');
+    } catch (err: unknown) {
+      setError(errorMessage(err, 'Could not generate a code. Try again.'));
     } finally {
       setLoading(false);
     }
@@ -51,7 +55,7 @@ export default function GenerateScreen() {
         <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} />
         {error && <Text style={styles.error}>{error}</Text>}
         <Button label="Generate TID" onPress={handleGenerate} loading={loading} />
-        <TouchableOpacity onPress={() => navigation.navigate('EnterCode')}>
+        <TouchableOpacity disabled={loading} onPress={() => navigation.navigate('EnterCode')}>
           <Text style={styles.link}>Have a code instead?</Text>
         </TouchableOpacity>
       </View>

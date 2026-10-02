@@ -1,18 +1,15 @@
 import { db } from './firebase';
 
-// A rolling window counter stored per user per action, wrapped in a
-// transaction. Read-then-write without one would let a burst of
-// concurrent calls all read the same count before any of them writes,
-// quietly defeating the limit under load.
-export async function withinRateLimit(uid: string, counterName: string, max: number): Promise<boolean> {
+export async function withinRateLimit(uid: string, counterName: string, max: number, windowMs = 60 * 60 * 1000): Promise<boolean> {
   const ref = db.collection('rateLimits').doc(`${uid}_${counterName}`);
-  const hourAgo = Date.now() - 60 * 60 * 1000;
   return db.runTransaction(async (tx) => {
+    const now = Date.now();
     const snap = await tx.get(ref);
-    const events: number[] = (snap.data()?.events ?? []).filter((t: number) => t > hourAgo);
+    const stored = snap.data()?.events;
+    const events: number[] = Array.isArray(stored) ? stored.filter((t: unknown): t is number => typeof t === 'number' && Number.isFinite(t) && t > now - windowMs) : [];
     if (events.length >= max) return false;
-    events.push(Date.now());
-    tx.set(ref, { events });
+    events.push(now);
+    tx.set(ref, { events, deleteAt: new Date(now + windowMs) });
     return true;
   });
 }

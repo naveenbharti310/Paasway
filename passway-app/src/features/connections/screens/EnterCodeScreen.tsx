@@ -1,9 +1,10 @@
+import { errorMessage } from '../../../services/errors';
+import type { RootNavigationProp } from '../../../navigation/types';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { db, app } from '../../../firebase/config';
+import { db, auth } from '../../../firebase/config';
 import { redeemTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
@@ -13,28 +14,32 @@ import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 
 export default function EnterCodeScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootNavigationProp>();
   const [digits, setDigits] = useState(['', '', '', '']);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [requestExpiresAt, setRequestExpiresAt] = useState<number | null>(null);
   const inputs = useRef<Array<TextInput | null>>([]);
-  const uid = getAuth(app).currentUser?.uid ?? '';
+  const uid = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
     if (!uid) return;
-    getSavedName(uid).then(setName).catch(() => {});
+    let active = true;
+    getSavedName(uid).then((saved) => { if (active) setName(saved); }).catch(() => console.warn('Saved name could not be loaded.'));
+    return () => { active = false; };
   }, [uid]);
 
   function updateDigit(index: number, value: string) {
     const next = [...digits];
-    next[index] = value.slice(-1).toUpperCase();
+    next[index] = value.replace(/[^A-Za-z0-9]/g, '').slice(-1).toUpperCase();
     setDigits(next);
     if (value && index < 3) inputs.current[index + 1]?.focus();
   }
 
   async function handleConnect() {
+    if (loading || requestId) return;
     const code = digits.join('');
     if (code.length !== 4) {
       setError('Enter all four characters');
@@ -49,10 +54,11 @@ export default function EnterCodeScreen() {
     try {
       const { lat, lng } = await getCurrentLocation();
       const result = await redeemTid(code, lat, lng, name.trim());
-      saveDefaultName(uid, name.trim()).catch(() => {});
+      void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
+      setRequestExpiresAt(result.expiresAt);
       setRequestId(result.requestId);
-    } catch (err: any) {
-      setError(err?.message ?? 'That code did not work. Check it and try again.');
+    } catch (err: unknown) {
+      setError(errorMessage(err, 'That code did not work. Check it and try again.'));
     } finally {
       setLoading(false);
     }
@@ -62,16 +68,36 @@ export default function EnterCodeScreen() {
     if (!requestId) return;
     const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), (snap) => {
       const data = snap.data();
-      if (!data) return;
-      if (data.status === 'accepted') {
+      if (!data) {
+        setError('This request is no longer available.');
+        setRequestId(null);
+        return;
+      }
+      if (data.status === 'accepted' && typeof data.connectionId === 'string') {
         navigation.replace('Chat', { connectionId: data.connectionId });
       } else if (data.status === 'declined' || data.status === 'expired') {
         setError('That code is no longer available.');
         setRequestId(null);
       }
+    }, (err) => {
+      setError(errorMessage(err, 'Could not check the request.'));
+      setRequestId(null);
     });
     return unsubscribe;
-  }, [requestId]);
+  }, [requestId, navigation]);
+
+  useEffect(() => {
+    if (!requestId || !requestExpiresAt) return;
+    const checkExpiry = () => {
+      if (Date.now() >= requestExpiresAt) {
+        setRequestId(null);
+        setError('The request expired. Ask them to generate a new code.');
+      }
+    };
+    checkExpiry();
+    const timer = setInterval(checkExpiry, 1000);
+    return () => clearInterval(timer);
+  }, [requestId, requestExpiresAt]);
 
   if (requestId) {
     return (

@@ -1,52 +1,40 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
+    function signedIn() { return request.auth != null; }
+    function validProfile(data) {
+      return (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 30))
+        && (!('pushToken' in data) || (data.pushToken is string && data.pushToken.size() <= 4096));
+    }
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // status is intentionally excluded from what a client can set on
-      // create or change on update, only Cloud Functions, via the Admin
-      // SDK, can ban, unban, or mark an account reported. Without this,
-      // a banned account could simply write itself back to active.
-      allow create: if request.auth != null && request.auth.uid == userId
-        && request.resource.data.status == 'active';
-      allow update: if request.auth != null && request.auth.uid == userId
-        && request.resource.data.status == resource.data.status;
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn() && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(['userId', 'status', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['userId', 'status', 'createdAt', 'displayName', 'pushToken'])
+        && request.resource.data.userId == userId
+        && request.resource.data.status == 'active'
+        && request.resource.data.createdAt is number
+        && request.resource.data.createdAt > 0
+        && validProfile(request.resource.data);
+      allow update: if signedIn() && request.auth.uid == userId
+        && resource.data.status != 'banned'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'pushToken'])
+        && validProfile(request.resource.data);
     }
-
-    // TIDs are never read directly by clients. The generator gets the
-    // code back as the return value of the generateTid function, and
-    // nobody else has a reason to query this collection at all.
-    match /tids/{tidId} {
-      allow read, write: if false;
-    }
-
+    match /tids/{tidId} { allow read, write: if false; }
     match /connectionRequests/{requestId} {
-      allow read: if request.auth != null &&
-        (request.auth.uid == resource.data.requesterId || request.auth.uid == resource.data.generatorId);
-      allow write: if false; // Cloud Functions only, via the Admin SDK.
-    }
-
-    match /connections/{connectionId} {
-      allow read: if request.auth != null &&
-        (request.auth.uid == resource.data.userA || request.auth.uid == resource.data.userB);
+      allow read: if signedIn() && (request.auth.uid == resource.data.requesterId || request.auth.uid == resource.data.generatorId);
       allow write: if false;
-
+    }
+    match /connections/{connectionId} {
+      allow read: if signedIn() && (request.auth.uid == resource.data.userA || request.auth.uid == resource.data.userB);
+      allow write: if false;
       match /messages/{messageId} {
-        allow read: if request.auth != null &&
-          (request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userA ||
-           request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userB);
-        allow write: if false; // Sent through sendMessage so every message is screened first.
+        allow read: if signedIn() && (request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userA || request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userB);
+        allow write: if false;
       }
     }
-
-    match /reports/{reportId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.reporterId;
-      allow read, update, delete: if false;
-    }
-
-    match /rateLimits/{document=**} {
-      allow read, write: if false;
-    }
+    match /reports/{reportId} { allow read, write: if false; }
+    match /rateLimits/{counterId} { allow read, write: if false; }
   }
 }

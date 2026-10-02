@@ -11,9 +11,6 @@ interface Props {
   style?: ViewStyle;
 }
 
-// One button component so every screen shares the same padding, radius,
-// and loading treatment, instead of each screen defining its own
-// slightly different version of the same button.
 export default function Button({ label, onPress, variant = 'primary', loading, disabled, style }: Props) {
   const isPrimary = variant === 'primary';
   return (

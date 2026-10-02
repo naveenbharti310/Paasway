@@ -6,14 +6,11 @@ interface Props extends TextInputProps {
   label: string;
 }
 
-// Label above field, the pattern used throughout the reviewed mockups.
-// A bare TextInput with only a placeholder loses its label the moment
-// someone starts typing, this keeps context visible the whole time.
 export default function LabeledField({ label, style, ...rest }: Props) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput style={[styles.field, style]} placeholderTextColor={colors.textMuted} {...rest} />
+      <TextInput style={[styles.field, style]} placeholderTextColor={colors.textMuted} accessibilityLabel={label} {...rest} />
     </View>
   );
 }

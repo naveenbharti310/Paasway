@@ -15,7 +15,7 @@ npm ci
 npm ci --prefix functions
 npm run typecheck
 npm run typecheck --prefix functions
-npm run build --prefix functions
+npm test --prefix functions
 ```
 
 To start the development server:
@@ -42,26 +42,37 @@ See [code organisation](../docs/code-organisation.md) for the folder map and pla
 
 ## Firebase setup
 
-1. Create a Firebase project and register the mobile apps and the web configuration required by the Firebase JavaScript SDK.
-2. Enable Firestore, phone authentication and Cloud Functions.
-3. Supply the project configuration in `src/firebase/config.ts`. It currently contains placeholders. Firebase client configuration is not an admin credential; access must be protected by rules and backend checks.
-4. Configure Firebase project selection and add a `firebase.json` file that points to `functions/`, `firestore.rules` and `firestore.indexes.json`. Those deployment settings are not included yet.
-5. After configuration is complete, deploy the functions, rules and indexes with `firebase deploy --only firestore:rules,firestore:indexes,functions`.
-6. Configure a Firestore TTL policy on `deleteAt` for the `tids` and `messages` collection groups. A field containing a date does not delete a document by itself.
-7. Test phone verification, location permissions, notifications and the complete connection flow on physical devices.
+1. Create a Firebase project, register the apps, and enable phone authentication, Firestore and Cloud Functions.
+2. Copy `.env.example` to `.env` and supply the Firebase web configuration. `EXPO_PUBLIC_` values are bundled into the app, so never use that prefix for admin credentials or other secrets.
+3. Set `EXPO_PUBLIC_EAS_PROJECT_ID` to the Expo project ID if notifications are needed. Notification registration is skipped when it is missing.
+4. `firebase.json` contains deployment paths and a backend build step. Select the real Firebase project explicitly when deploying.
+5. Deploy with `npx firebase-tools@13.35.1 deploy --project YOUR_PROJECT_ID --only functions,firestore:rules,firestore:indexes`.
+6. The field overrides in `firestore.indexes.json` enable TTL for code, request, connection, message, report and rate limit records. Check the deployed TTL policies. Firestore TTL is asynchronous, and deleting a connection document does not delete its message subcollection; message documents have their own TTL policy.
+7. Test authentication, notifications, location, background behaviour and the complete flow on physical devices.
 
-Never commit service account keys, personal access tokens or private signing keys.
+Never commit service account keys, access tokens or signing keys.
+
+## Automated checks
+
+```sh
+npm run typecheck
+npm run typecheck --prefix functions
+npm test --prefix functions
+npm run test:emulator
+```
+
+The emulator command requires Java and downloads the pinned Firebase CLI and emulator when needed. It uses the local `demo-passway` project, not the live Firebase project. It runs security rule checks and backend transaction tests, including concurrent redemption, message ending races and retention across more than 500 messages.
 
 ## Connection rules
 
 1. A code lasts five minutes. Redemption moves it from active to pending, and there is no return to active for that code document.
 2. Proximity uses a geohash with precision 7 and the eight neighbouring cells. Raw coordinates are not saved in the code document.
 3. Redemption and request acceptance use Firestore transactions. Rate limit counters also use transactions.
-4. Code generation and redemption reject banned accounts. Generation is limited to ten attempts per hour, and redemption attempts to fifteen per hour.
+4. Code generation and redemption reject banned accounts. Generation is limited to ten attempts per hour, redemption attempts to fifteen per hour, and messages to sixty per minute. Messages are limited to 2,000 characters.
 5. Ending a conversation schedules its messages for deletion 72 hours later. Reporting schedules retention for 30 days and ends the conversation. Firestore TTL handles actual deletion after the policy is configured.
 6. Reports mark an active reported account for review rather than automatically banning it. An existing ban is not downgraded.
 
-Business data writes for codes, connections and messages go through callable functions. User profile creation and updates still use the client SDK under Firestore rules. The rules also currently permit report creation by an authenticated reporter; reporting through the app uses the callable function.
+Code, connection, message and report writes go through callable functions. Profile creation and bounded display name and push token updates use the client SDK under Firestore rules. Moderation status and account identity cannot be changed by the client. A retryable backend trigger repairs message retention after an end or report if the foreground operation is interrupted.
 
 ## Device builds
 
@@ -77,11 +88,10 @@ The current preview profile targets the iOS Simulator, which requires macOS and 
 
 ## Work still needed
 
-1. Scam and harassment screening is a placeholder in `functions/src/moderation.ts`. The early contact sharing check exists, but the chat screen does not show the returned safety nudge.
-2. Notifications depend on permission and an Expo push token saved after sign in. Token refresh and a settings control are not implemented.
-3. The chat menu offers an end action and a report or block action. The latter files a report and ends the conversation; there is no separate persistent block list yet.
-4. Automated runtime tests, a staging Firebase project and crash monitoring are not configured.
-5. Onboarding, permission explanations, age checks, settings, app icon and splash screen work remain.
-6. Firebase configuration and deployment setup must be completed before the app is ready to use.
-
-This folder reorganisation preserves the existing behaviour. It is not a production readiness review.
+1. Scam and harassment classification is not connected. The contact sharing nudge is displayed, but it is not a moderation service.
+2. The current phone verification package and Expo SDK need a planned upgrade. Authentication persistence across app restarts is not configured.
+3. Notifications need real Expo project configuration, permissions and device testing. Token refresh is registered while the app is running.
+4. Reporting closes the conversation. There is no persistent block list or review dashboard yet.
+5. The chat shows the latest 200 messages. Earlier history pagination and recovery of an active conversation after restarting the app remain.
+6. App Check, stronger device attestation, onboarding, age checks, settings, crash monitoring and a staging environment are not configured.
+7. Dependency security findings remain. See [the audit report](../docs/code-audit.md). This code is not ready for a production release.

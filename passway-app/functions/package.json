@@ -8,7 +8,9 @@
   "scripts": {
     "build": "tsc",
     "deploy": "firebase deploy --only functions",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.cjs",
+    "test:integration": "npm run build && node --test test/emulator.integration.cjs"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",

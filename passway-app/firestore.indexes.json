@@ -4,10 +4,61 @@
       "collectionGroup": "connectionRequests",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tid", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        {
+          "fieldPath": "generatorId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tidCreatedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "tids",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "messages",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "connectionRequests",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "reports",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rateLimits",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "connections",
+      "fieldPath": "deleteAt",
+      "ttl": true,
+      "indexes": []
+    }
+  ]
 }

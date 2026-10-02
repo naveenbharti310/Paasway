@@ -1,8 +1,10 @@
+import * as Notifications from 'expo-notifications';
+import { errorMessage } from '../services/errors';
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { ensureUserDoc } from '../features/auth/api/ensureUser';
 import { registerForPush } from '../services/notifications';
@@ -24,20 +26,55 @@ export default function RootNavigator() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    let active = true;
+    let version = 0;
+    let pushListener: ReturnType<typeof Notifications.addPushTokenListener> | undefined;
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      const currentVersion = ++version;
+      pushListener?.remove();
+      pushListener = undefined;
+      setCheckingAuth(true);
+      setSetupError(null);
       setUser(u);
-      setCheckingAuth(false);
-      if (u) {
-        // Best effort, a failure here should never block the person
-        // from using the app.
-        ensureUserDoc(u.uid)
-          .then(() => registerForPush(u.uid))
-          .catch(() => {});
+      try {
+        if (u) await ensureUserDoc(u.uid);
+        if (!active || currentVersion !== version) return;
+        setCheckingAuth(false);
+        if (u) {
+          const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
+          void refreshPush();
+          pushListener = Notifications.addPushTokenListener(() => void refreshPush());
+        }
+      } catch (err) {
+        if (!active || currentVersion !== version) return;
+        setSetupError(errorMessage(err, 'Your account could not be loaded. Try again.'));
+        setCheckingAuth(false);
       }
+    }, (err) => {
+      if (!active) return;
+      setSetupError(errorMessage(err, 'Sign in could not be checked.'));
+      setCheckingAuth(false);
     });
-    return unsubscribe;
-  }, []);
+    return () => { active = false; unsubscribe(); pushListener?.remove(); };
+  }, [retry]);
+
+  if (setupError) {
+    return (
+      <View style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 16, backgroundColor: colors.bg }}>
+        <Text style={{ color: colors.danger }}>{setupError}</Text>
+        <TouchableOpacity accessibilityRole="button" onPress={() => setRetry((value) => value + 1)}>
+          <Text style={{ color: colors.accentText }}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" onPress={() => void signOut(auth).catch(() => setSetupError('Could not sign out. Try again.'))}>
+          <Text style={{ color: colors.textPrimary }}>Sign out</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (checkingAuth) {
     return (

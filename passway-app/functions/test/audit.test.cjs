@@ -1,0 +1,119 @@
+const { test, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const { MemoryFirestore } = require('./support.cjs');
+const firebase = require('../lib/lib/firebase');
+const codeGenerator = require('../lib/lib/tid');
+const originalRandomTid = codeGenerator.randomTid;
+const { generateTid, redeemTid, deactivateTid } = require('../lib/handlers/tids');
+const { respondToRequest, endConnection } = require('../lib/handlers/connections');
+const { sendMessage } = require('../lib/handlers/messages');
+const { fileReport } = require('../lib/handlers/reports');
+const validation = require('../lib/lib/validation');
+const { retentionDate } = require('../lib/lib/retention');
+const { withinRateLimit } = require('../lib/lib/rateLimits');
+const { encodeGeohash } = require('../lib/geo');
+const { screenMessage } = require('../lib/moderation');
+const { sendPushNotification } = require('../lib/push');
+const originalFetch = global.fetch;
+let db;
+const uid = 'alice', other = 'bob';
+const call = (handler, data, user = uid) => handler.run({ auth: user ? { uid: user } : undefined, data });
+function connection(status = 'active', extras = {}) {
+  db.seed('connections/chat1', { connectionId: 'chat1', userA: uid, userB: other, userAName: 'Alice', userBName: 'Bob', status, createdAt: Date.now(), ...extras });
+}
+function code(status = 'active', extras = {}) {
+  db.seed('tids/AB12', { tid: 'AB12', generatorId: uid, generatorName: 'Alice', geoHash: encodeGeohash(28.6, 77.2), status, createdAt: Date.now(), expiresAt: Date.now() + 300000, ...extras });
+}
+function pending(extras = {}) {
+  const createdAt = Date.now();
+  code('pending', { requestId: 'req1', createdAt });
+  db.seed('connectionRequests/req1', { requestId: 'req1', tid: 'AB12', tidCreatedAt: createdAt, expiresAt: Date.now() + 300000, status: 'pending', generatorId: uid, generatorName: 'Alice', requesterId: other, requesterName: 'Bob', ...extras });
+}
+beforeEach(() => {
+  db = new MemoryFirestore().seed('users/alice', { status: 'active' }).seed('users/bob', { status: 'active' });
+  firebase.db = db;
+});
+afterEach(() => { codeGenerator.randomTid = originalRandomTid; global.fetch = originalFetch; });
+
+for (const value of [null, undefined, [], 'bad', 12]) {
+  test(`reject invalid request payload ${JSON.stringify(value)}`, () => assert.throws(() => validation.payload(value), { code: 'invalid-argument' }));
+}
+for (const value of ['', '.', '..', 'one/two', ' id ', 'x'.repeat(129)]) {
+  test(`reject unsafe document id ${value.slice(0, 12)}`, () => assert.throws(() => validation.documentId(value, 'Id'), { code: 'invalid-argument' }));
+}
+for (const [lat, lng] of [[NaN, 1], [Infinity, 1], [91, 1], [1, -181], ['1', 1]]) {
+  test(`reject invalid location ${lat},${lng}`, () => assert.throws(() => validation.coordinates(lat, lng), { code: 'invalid-argument' }));
+}
+test('normalise code and name', () => { assert.equal(validation.tidCode(' ab12 '), 'AB12'); assert.equal(validation.text(' Alice ', 'Name', 30), 'Alice'); });
+test('reject invalid code characters', () => assert.throws(() => validation.tidCode('A/B1'), { code: 'invalid-argument' }));
+test('reject oversized and blank messages', () => { assert.throws(() => validation.text(' ', 'Message', 2000)); assert.throws(() => validation.text('x'.repeat(2001), 'Message', 2000)); });
+test('require two distinct participants', () => assert.throws(() => validation.otherParticipant({ userA: uid, userB: uid }, uid)));
+test('generate cryptographically random four character codes', () => { for (let i = 0; i < 100; i++) assert.match(originalRandomTid(), /^[A-Z0-9]{4}$/); });
+test('preserve a longer retention hold', () => assert.equal(retentionDate(new Date(9000), new Date(1000)).getTime(), 9000));
+test('read Firestore timestamp retention values', () => assert.equal(retentionDate({ toMillis: () => 9000 }, new Date(1000)).getTime(), 9000));
+
+for (const handler of [generateTid, redeemTid, deactivateTid, respondToRequest, endConnection, sendMessage, fileReport]) {
+  test(`authentication required for ${handler.name || 'callable'}`, async () => assert.rejects(call(handler, {}, null), { code: 'unauthenticated' }));
+}
+test('allocate a code without overwriting an existing pending code', async () => {
+  code('pending'); let attempt = 0; codeGenerator.randomTid = () => ++attempt === 1 ? 'AB12' : 'CD34';
+  const result = await call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' });
+  assert.equal(result.tid, 'CD34'); assert.equal(db.read('tids/AB12').status, 'pending');
+});
+test('reject code generation by a banned account', async () => {
+  db.seed('users/alice', { status: 'banned' });
+  await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'permission-denied' });
+});
+test('reject redemption of your own code', async () => { code(); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'invalid-argument' }); });
+test('reject a remote redemption', async () => { code(); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 0, lng: 0, displayName: 'Bob' }, other), { code: 'permission-denied' }); });
+test('reject an expired code', async () => { code('active', { expiresAt: Date.now() }); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other), { code: 'not-found' }); });
+test('claim a code only once and return request expiry', async () => {
+  code(); const first = await call(redeemTid, { tid: 'ab12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
+  assert.equal(typeof first.expiresAt, 'number'); assert.equal(db.read(`connectionRequests/${first.requestId}`).tidCreatedAt, db.read('tids/AB12').createdAt);
+  await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other), { code: 'not-found' });
+});
+test('do not cancel a claimed code', async () => { code('pending'); await assert.rejects(call(deactivateTid, { tid: 'AB12' }), { code: 'failed-precondition' }); });
+test('reject a nonboolean request decision', async () => { pending(); await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: 'yes' }), { code: 'invalid-argument' }); });
+test('reject an expired request', async () => { pending({ expiresAt: Date.now() - 1 }); await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'failed-precondition' }); });
+test('reject a request for a different code generation', async () => { pending({ tidCreatedAt: 1 }); await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'failed-precondition' }); });
+test('accept a request and create one connection', async () => { pending(); const result = await call(respondToRequest, { requestId: 'req1', accept: true }); assert.equal(db.read(`connections/${result.connectionId}`).userB, other); assert.equal(db.read('tids/AB12').status, 'connected'); });
+test('decline without creating a connection', async () => { pending(); await call(respondToRequest, { requestId: 'req1', accept: false }); assert.equal(db.read('connectionRequests/req1').status, 'declined'); assert.equal([...db.values.keys()].filter((key) => key.startsWith('connections/')).length, 0); });
+test('reject acceptance when either account is banned', async () => { pending(); db.seed('users/bob', { status: 'banned' }); await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'permission-denied' }); });
+test('send a bounded message to an active connection', async () => { connection(); const result = await call(sendMessage, { connectionId: 'chat1', content: ' Hello ' }); assert.equal(result.flag, 'none'); assert.equal([...db.values.values()].find((value) => value.messageId)?.content, 'Hello'); });
+test('recheck connection status after the initial message read', async () => {
+  connection(); db.afterRead = (path) => { if (path === 'connections/chat1') db.seed(path, { ...db.read(path), status: 'ended' }); };
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Hello' }), { code: 'failed-precondition' });
+  assert.equal([...db.values.values()].filter((value) => value.messageId).length, 0);
+});
+test('reject messages from banned accounts', async () => { connection(); db.seed('users/alice', { status: 'banned' }); await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Hello' }), { code: 'permission-denied' }); });
+test('reject reporting an unrelated account', async () => { connection(); await assert.rejects(call(fileReport, { connectionId: 'chat1', reportedId: 'charlie', reason: 'Spam' }), { code: 'invalid-argument' }); });
+test('reject reporting yourself', async () => { connection(); await assert.rejects(call(fileReport, { connectionId: 'chat1', reportedId: uid, reason: 'Spam' }), { code: 'invalid-argument' }); });
+test('report, close and flag atomically without downgrading a ban', async () => { connection(); db.seed('users/bob', { status: 'banned' }); const result = await call(fileReport, { connectionId: 'chat1', reportedId: other, reason: 'Spam' }); assert.ok(db.read(`reports/${result.reportId}`)); assert.equal(db.read('connections/chat1').status, 'ended'); assert.equal(db.read('users/bob').status, 'banned'); });
+test('retry a report without duplicates or extending the hold', async () => { connection(); const data = { connectionId: 'chat1', reportedId: other, reason: 'Spam' }; const first = await call(fileReport, data); const hold = db.read('connections/chat1').deleteAt; const second = await call(fileReport, data); assert.equal(first.reportId, second.reportId); assert.deepEqual(db.read('connections/chat1').deleteAt, hold); });
+test('end a reported conversation without shortening its retention', async () => { connection(); await call(fileReport, { connectionId: 'chat1', reportedId: other, reason: 'Spam' }); const hold = db.read('connections/chat1').deleteAt; await call(endConnection, { connectionId: 'chat1' }); assert.deepEqual(db.read('connections/chat1').deleteAt, hold); });
+test('repeat end without moving the deletion date', async () => { connection(); await call(endConnection, { connectionId: 'chat1' }); const first = db.read('connections/chat1'); await call(endConnection, { connectionId: 'chat1' }); assert.deepEqual(db.read('connections/chat1'), first); });
+test('retain more than 500 messages using bounded transactions', async () => { connection(); for (let i = 0; i < 601; i++) db.seed(`connections/chat1/messages/m${String(i).padStart(4, '0')}`, { content: 'hello' }); await call(endConnection, { connectionId: 'chat1' }); assert.ok(db.read('connections/chat1/messages/m0600').deleteAt instanceof Date); assert.ok(db.pageWrites.every((writes) => writes <= 200)); });
+test('allow only the configured number of rate limited requests', async () => { assert.equal(await withinRateLimit(uid, 'test', 2), true); assert.equal(await withinRateLimit(uid, 'test', 2), true); assert.equal(await withinRateLimit(uid, 'test', 2), false); });
+test('ignore old and malformed rate limit events', async () => { db.seed('rateLimits/alice_test', { events: [Date.now() - 3600001, 'bad', null] }); assert.equal(await withinRateLimit(uid, 'test', 1), true); assert.equal(db.read('rateLimits/alice_test').events.length, 1); });
+test('detect early contact sharing without claiming real moderation', async () => { assert.deepEqual(await screenMessage('Use WhatsApp', 10), { flag: 'none', earlyContactShare: true }); assert.equal((await screenMessage('Use WhatsApp', 181)).earlyContactShare, false); });
+test('notification failures do not reject the connection flow', async () => { global.fetch = async () => { throw new Error('offline'); }; await sendPushNotification('ExpoPushToken[example]', 'Passway', 'Hello'); });
+
+test('retention repair ignores a deleted connection', async () => {
+  const { applyMessageRetention } = require('../lib/lib/retention');
+  await applyMessageRetention(db.collection('connections').doc('missing'));
+});
+test('background retention repair uses the latest report hold', async () => {
+  const { syncConnectionRetention } = require('../lib/handlers/retention');
+  const hold = new Date(Date.now() + 30 * 86400000);
+  connection('ended', { deleteAt: hold });
+  db.seed('connections/chat1/messages/m1', { content: 'Hello' });
+  await syncConnectionRetention.run({ data: { before: { data: () => ({ status: 'active' }) }, after: { data: () => ({ status: 'ended', deleteAt: new Date(Date.now() + 72 * 3600000) }), ref: db.collection('connections').doc('chat1') } } });
+  assert.deepEqual(db.read('connections/chat1/messages/m1').deleteAt, hold);
+});
+test('background retention repair ignores unrelated active updates', async () => {
+  const { syncConnectionRetention } = require('../lib/handlers/retention');
+  connection();
+  db.seed('connections/chat1/messages/m1', { content: 'Hello' });
+  await syncConnectionRetention.run({ data: { before: { data: () => ({ status: 'active' }) }, after: { data: () => ({ status: 'active' }), ref: db.collection('connections').doc('chat1') } } });
+  assert.equal(db.read('connections/chat1/messages/m1').deleteAt, undefined);
+});

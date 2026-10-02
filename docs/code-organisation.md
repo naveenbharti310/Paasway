@@ -35,7 +35,10 @@ Shared components should not import feature code. A feature may use another feat
 | `functions/src/lib/firebase.ts` | Initialise the Admin SDK and expose the database client |
 | `functions/src/lib/accounts.ts` | Check whether an account is banned |
 | `functions/src/lib/rateLimits.ts` | Enforce the existing transaction based rate limits |
-| `functions/src/lib/tid.ts` | Generate a candidate temporary code |
+| `functions/src/lib/tid.ts` | Generate a candidate code using secure randomness |
+| `functions/src/lib/validation.ts` | Validate callable input and participant identity |
+| `functions/src/lib/retention.ts` | Apply message retention in bounded transactions |
+| `functions/src/handlers/retention.ts` | Retry message retention after a connection changes |
 | `functions/src/constants.ts` | Timing, limits and geohash precision |
 | `functions/src/geo.ts` | Geohash encoding and neighbouring cells |
 | `functions/src/moderation.ts` | Message screening hook |
@@ -52,6 +55,8 @@ Handlers import shared services directly. They should not import the deployment 
 5. Run both TypeScript checks before committing.
 6. Do not commit dependencies, generated bundles or credentials.
 
-## Scope of this change
+## Tests
 
-This is a structural refactor. It does not change the screen layout, stored data, callable payloads, security rules, retention behaviour or moderation behaviour. Existing runtime limitations still need separate work.
+Backend regression tests are in `functions/test/`. Security rule tests are in `test/`. The backend integration tests use the local Firestore emulator and refuse to run against a production database.
+
+The initial folder reorganisation preserved behaviour. Subsequent fixes are recorded in [the code audit](code-audit.md).

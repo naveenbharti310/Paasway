@@ -1,22 +1,25 @@
+import { errorMessage } from '../../../services/errors';
+import { TID_TTL_MS } from '../../../types/models';
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../firebase/config';
+import { db, auth } from '../../../firebase/config';
 import { deactivateTid } from '../api/connections';
 import { colors } from '../../../theme/colors';
-import type { RootStackParamList } from '../../../navigation/types';
+import type { RootStackParamList, RootNavigationProp } from '../../../navigation/types';
 import ScreenHeader from '../../../components/ScreenHeader';
 import Button from '../../../components/Button';
 
 type CodeRouteProp = RouteProp<RootStackParamList, 'Code'>;
 
 export default function CodeScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<CodeRouteProp>();
   const { tid, expiresAt } = params;
   const [secondsLeft, setSecondsLeft] = useState(Math.max(0, Math.round((expiresAt - Date.now()) / 1000)));
   const [canceling, setCanceling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -28,12 +31,14 @@ export default function CodeScreen() {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [expiresAt]);
+  }, [expiresAt, navigation]);
 
   useEffect(() => {
     const q = query(
       collection(db, 'connectionRequests'),
+      where('generatorId', '==', auth.currentUser?.uid ?? ''),
       where('tid', '==', tid),
+      where('tidCreatedAt', '==', expiresAt - TID_TTL_MS),
       where('status', '==', 'pending'),
       limit(1)
     );
@@ -45,18 +50,23 @@ export default function CodeScreen() {
           requestId: requestDoc.id,
           requesterName: data.requesterName,
           requestedAt: data.createdAt,
-          tidCreatedAt: expiresAt - 5 * 60 * 1000,
+          tidCreatedAt: data.tidCreatedAt,
+          expiresAt: data.expiresAt,
         });
       }
-    });
+    }, (err) => setError(errorMessage(err, 'Could not listen for a connection request.')));
     return unsubscribe;
-  }, [tid]);
+  }, [tid, expiresAt, navigation]);
 
   async function handleCancel() {
+    if (canceling) return;
     setCanceling(true);
+    setError(null);
     try {
       await deactivateTid(tid);
       navigation.replace('Generate');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not cancel the code. Try again.'));
     } finally {
       setCanceling(false);
     }
@@ -76,6 +86,7 @@ export default function CodeScreen() {
         </View>
         <Text style={[styles.timer, urgent && styles.timerUrgent]}>{`Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`}</Text>
         <Text style={styles.helper}>Show this to the person you just met</Text>
+        {error && <Text style={styles.error}>{error}</Text>}
         <Button label="Cancel" variant="secondary" onPress={handleCancel} loading={canceling} style={styles.cancelButton} />
       </View>
     </View>
@@ -88,6 +99,7 @@ const styles = StyleSheet.create({
   codeCard: { backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 22, paddingHorizontal: 34, alignItems: 'center' },
   codeLabel: { fontSize: 11, color: colors.textMuted, marginBottom: 6, letterSpacing: 1 },
   codeText: { fontSize: 34, fontWeight: '700', letterSpacing: 5, color: colors.textPrimary },
+  error: { fontSize: 12, color: colors.danger, textAlign: 'center' },
   timer: { fontSize: 13, color: colors.textSecondary },
   timerUrgent: { color: colors.danger, fontWeight: '600' },
   helper: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 220 },

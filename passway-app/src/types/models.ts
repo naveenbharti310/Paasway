@@ -1,7 +1,3 @@
-// Core data model shared across the app. Mirrors the architecture doc
-// (passway_architecture_and_data_model.md) and the decisions in its
-// section 7.
-
 export type TidStatus = 'active' | 'pending' | 'connected' | 'expired' | 'deactivated';
 export type RequestStatus = 'pending' | 'accepted' | 'declined' | 'expired';
 export type ConnectionStatus = 'active' | 'ended';
@@ -9,7 +5,6 @@ export type ModerationFlag = 'none' | 'scam_suspected' | 'harassment_suspected';
 
 export interface User {
   userId: string;
-  phoneHash: string;
   displayName?: string;
   pushToken?: string;
   status: 'active' | 'reported' | 'banned';
@@ -32,6 +27,9 @@ export interface ConnectionRequest {
   requesterId: string;
   requesterName: string;
   generatorId: string;
+  generatorName: string;
+  tidCreatedAt: number;
+  expiresAt: number;
   status: RequestStatus;
   createdAt: number;
   connectionId?: string;
@@ -48,6 +46,8 @@ export interface Connection {
   endedBy?: string;
   createdAt: number;
   endedAt?: number;
+  reportedAt?: number;
+  reportedBy?: string;
 }
 
 export interface Message {
@@ -68,12 +68,4 @@ export interface Report {
   createdAt: number;
 }
 
-// Constants tied directly to the decisions in section 7 of the
-// architecture doc. functions/src/constants.ts mirrors these for the
-// Cloud Functions package, which deploys separately.
 export const TID_TTL_MS = 5 * 60 * 1000;
-export const GEOHASH_PRECISION = 7;
-export const MESSAGE_RETENTION_HOURS = 72;
-export const REPORTED_MESSAGE_RETENTION_DAYS = 30;
-export const MAX_TID_GENERATIONS_PER_HOUR = 10;
-export const MAX_FAILED_REDEMPTIONS_PER_HOUR = 15;

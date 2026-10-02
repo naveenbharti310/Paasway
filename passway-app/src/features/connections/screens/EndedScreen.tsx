@@ -2,14 +2,14 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { colors } from '../../../theme/colors';
-import type { RootStackParamList } from '../../../navigation/types';
+import type { RootStackParamList, RootNavigationProp } from '../../../navigation/types';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 
 type EndedRouteProp = RouteProp<RootStackParamList, 'Ended'>;
 
 export default function EndedScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<EndedRouteProp>();
   const reported = params?.reported ?? false;
 
@@ -20,10 +20,10 @@ export default function EndedScreen() {
         <Text style={styles.title}>{reported ? 'Report submitted' : 'Connection ended'}</Text>
         <Text style={styles.helper}>
           {reported
-            ? 'Thanks for flagging this. The connection is closed and our team will review it.'
-            : 'The TID is gone for good. Neither of you can reopen this chat.'}
+            ? 'Your report has been saved and the connection is closed.'
+            : 'This connection is closed. To connect again, you will need a new code.'}
         </Text>
-        <Button label="Generate new TID" onPress={() => navigation.replace('Generate')} style={styles.button} />
+        <Button label="Generate new TID" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Generate' }] })} style={styles.button} />
       </View>
     </View>
   );

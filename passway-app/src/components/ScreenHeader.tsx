@@ -9,10 +9,8 @@ interface Props {
   right?: React.ReactNode;
 }
 
-// The back-button-in-a-circle plus label pattern, shared so it always
-// looks and behaves the same rather than being redrawn per screen.
 export default function ScreenHeader({ title, showBack, right }: Props) {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   return (
     <View style={styles.header}>
       <View style={styles.left}>

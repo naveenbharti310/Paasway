@@ -1,8 +1,15 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["functions"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "functions"
+  ]
 }
