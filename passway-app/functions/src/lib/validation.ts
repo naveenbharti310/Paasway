@@ -35,7 +35,9 @@ export function coordinates(lat: unknown, lng: unknown): { lat: number; lng: num
   return { lat, lng };
 }
 
-export function otherParticipant(data: { userA: string; userB: string }, uid: string): string {
+export interface Participants { userA: string; userB: string }
+
+export function otherParticipant(data: Participants, uid: string): string {
   if (data.userA === uid && data.userB !== uid) return data.userB;
   if (data.userB === uid && data.userA !== uid) return data.userA;
   throw new HttpsError('permission-denied', 'Not a participant in this connection.');

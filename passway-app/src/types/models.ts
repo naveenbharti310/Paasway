@@ -48,6 +48,9 @@ export interface Connection {
   endedAt?: number;
   reportedAt?: number;
   reportedBy?: string;
+  blockedBy?: string;
+  endReason?: 'idle';
+  lastActivityAt?: number;
 }
 
 export interface Message {
@@ -68,4 +71,3 @@ export interface Report {
   createdAt: number;
 }
 
-export const TID_TTL_MS = 5 * 60 * 1000;

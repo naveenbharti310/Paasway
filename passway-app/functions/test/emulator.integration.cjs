@@ -9,7 +9,8 @@ const originalRandom = codeGenerator.randomTid;
 const { generateTid, redeemTid } = require('../lib/handlers/tids');
 const { respondToRequest, endConnection } = require('../lib/handlers/connections');
 const { sendMessage } = require('../lib/handlers/messages');
-const { fileReport } = require('../lib/handlers/reports');
+const { fileReport, blockUser } = require('../lib/handlers/reports');
+const { closeIdleConnections } = require('../lib/services/connections');
 const { encodeGeohash } = require('../lib/geo');
 const call = (fn, data, uid = 'alice') => fn.run({ auth: { uid }, data });
 const collection = (name) => db.collection(name);
@@ -72,4 +73,22 @@ test('a forged report has no partial database effects', async () => {
   assert.equal((await collection('reports').get()).size, 0);
   assert.equal((await collection('connections').doc('chat1').get()).data().status, 'active');
   assert.equal((await collection('users').doc('carol').get()).data().status, 'active');
+});
+test('a block stops a later redemption between the same people', async () => {
+  await seedConnection();
+  await call(blockUser, { connectionId: 'chat1' }, 'bob');
+  await seedCode();
+  await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob'), { code: 'not-found' });
+  assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+  assert.equal((await collection('connectionRequests').get()).size, 0);
+});
+test('the idle sweep uses the composite query and closes only idle connections', async () => {
+  const now = Date.now();
+  await collection('connections').doc('old').set({ connectionId: 'old', userA: 'alice', userB: 'bob', status: 'active', createdAt: now - 4 * 86400000, lastActivityAt: now - 4 * 86400000 });
+  await collection('connections').doc('fresh').set({ connectionId: 'fresh', userA: 'alice', userB: 'carol', status: 'active', createdAt: now, lastActivityAt: now });
+  await collection('connections').doc('old').collection('messages').doc('m1').set({ content: 'x', sentAt: now - 4 * 86400000 });
+  assert.equal(await closeIdleConnections(now), 1);
+  assert.equal((await collection('connections').doc('old').get()).data().status, 'ended');
+  assert.equal((await collection('connections').doc('fresh').get()).data().status, 'active');
+  assert.ok((await collection('connections').doc('old').collection('messages').doc('m1').get()).data().deleteAt);
 });

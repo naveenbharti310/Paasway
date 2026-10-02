@@ -13,9 +13,11 @@ npm ci --prefix functions
 npm run typecheck
 npm run typecheck --prefix functions
 npm test --prefix functions
-npm start
+npm run test:emulator
 ```
 
-Firebase configuration still needs to be supplied before signing in or using backend services. See [setup instructions](passway-app/README.md) and [code organisation](docs/code-organisation.md).
+The app uses native Firebase modules, so it runs in a development build rather than Expo Go. See [setup instructions](passway-app/README.md).
 
-The [code audit](docs/code-audit.md) records the fixes, validation and remaining release risks.
+1. [Architecture](docs/architecture.md) explains the design, the review findings, dependency status and remaining release work.
+2. [Code organisation](docs/code-organisation.md) maps every folder.
+3. [Code audit](docs/code-audit.md) records the earlier fixes.

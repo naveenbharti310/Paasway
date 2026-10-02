@@ -42,26 +42,9 @@ Several defects were fixed. The project is still not ready for a production rele
 
 The emulator tests use `demo-passway` and do not connect to the live Firebase project. No production deployment, signed native build or physical device test was performed. Checks ran on Node.js 24; the configured Cloud Functions runtime is Node.js 20.
 
-## Dependency findings still open
+## Later changes
 
-The final mobile audit reports 60 affected package entries: 1 critical, 21 high, 37 moderate and 1 low. The backend audit reports 10 affected package entries: 2 high and 8 moderate. These counts are package entries, not proof that every advisory is exploitable in the shipped app.
-
-The critical mobile finding is in `tar`, brought in by the older Expo tooling. Firebase, Expo, React Native and related tooling also have remaining findings. Resolving the platform findings needs a planned SDK and library upgrade. No forced downgrade or untested major upgrade was applied merely to reduce the audit count.
-
-Recheck with `npm audit` in both packages before release. Audit results change as advisories are published. Dependency overrides keep framework versions consistent; they do not waive or fix the remaining advisories.
-
-## Release work still needed
-
-1. Upgrade the older Expo, React Native, navigation and Firebase stack and replace the deprecated phone verification integration. Validate the migration on Android and iOS devices.
-2. Configure authentication persistence and recovery of an active conversation after app restart. Add pagination for history older than the latest 200 messages.
-3. Connect real scam and harassment moderation. Add a persistent block list and an operational report review process.
-4. Configure App Check and assess device attestation and abuse protection. The proximity check compares coordinates supplied by clients; it is not proof that a device is physically at that location.
-5. Configure the actual Firebase and Expo projects, signing, staging, monitoring and deployment credentials. Deploy and verify the rules, indexes, TTL policies and retention trigger.
-6. Test permissions, keyboard layout, accessibility, notification delivery, background transitions, weak connectivity and both sides of the connection flow on devices.
-7. Verify the supported production Node runtime and run checks in that same runtime before deployment.
-8. Add onboarding, age requirements and the settings needed for a release.
-
-Pending requests are rejected after expiry even if their stored status is still pending. TTL removes expired records asynchronously; there is no separate scheduler changing every pending request's status at its expiry timestamp.
+Dependencies were upgraded and the architecture was reviewed after this audit. The dependency findings and several release items listed here at the time are resolved. See [architecture](architecture.md) for the current dependency status, the review findings and the remaining release work.
 
 ## Repeat the checks
 

@@ -1,5 +1,5 @@
 import { errorMessage } from '../../../services/errors';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { respondToRequest } from '../api/connections';
@@ -29,7 +29,7 @@ export default function RequestScreen() {
     setError(null);
     setLoading(accept ? 'accept' : 'decline');
     try {
-      const result = await respondToRequest(requestId, accept);
+      const result = await respondToRequest({ requestId, accept });
       if (accept && result?.connectionId) {
         navigation.replace('Chat', { connectionId: result.connectionId });
       } else {

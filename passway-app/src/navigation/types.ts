@@ -1,12 +1,14 @@
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+export type EndOutcome = 'ended' | 'reported' | 'blocked' | 'idle';
+
 export type RootStackParamList = {
   Generate: undefined;
-  Code: { tid: string; expiresAt: number };
+  Code: { tid: string; createdAt: number; expiresAt: number };
   EnterCode: undefined;
   Request: { requestId: string; requesterName: string; requestedAt: number; tidCreatedAt: number; expiresAt: number };
   Chat: { connectionId: string };
-  Ended: { reported?: boolean } | undefined;
+  Ended: { outcome?: EndOutcome } | undefined;
 };
 
 export type AuthStackParamList = {

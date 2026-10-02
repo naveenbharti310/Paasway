@@ -1,10 +1,10 @@
 import { errorMessage } from '../../../services/errors';
 import type { RootNavigationProp } from '../../../navigation/types';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../../../firebase/config';
+import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { db, auth } from '../../../firebase/client';
 import { redeemTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
@@ -53,7 +53,7 @@ export default function EnterCodeScreen() {
     setError(null);
     try {
       const { lat, lng } = await getCurrentLocation();
-      const result = await redeemTid(code, lat, lng, name.trim());
+      const result = await redeemTid({ tid: code, lat, lng, displayName: name.trim() });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
       setRequestExpiresAt(result.expiresAt);
       setRequestId(result.requestId);

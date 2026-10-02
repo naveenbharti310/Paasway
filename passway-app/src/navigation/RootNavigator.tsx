@@ -1,11 +1,12 @@
 import * as Notifications from 'expo-notifications';
 import { errorMessage } from '../services/errors';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth } from '../firebase/config';
+import { onAuthStateChanged, signOut, type User } from '@react-native-firebase/auth';
+import { auth } from '../firebase/client';
+import { findActiveConnection } from '../features/connections/api/activeConnection';
 import { ensureUserDoc } from '../features/auth/api/ensureUser';
 import { registerForPush } from '../services/notifications';
 import PhoneAuthScreen from '../features/auth/screens/PhoneAuthScreen';
@@ -26,6 +27,7 @@ export default function RootNavigator() {
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  const [resumeConnectionId, setResumeConnectionId] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
 
@@ -41,8 +43,14 @@ export default function RootNavigator() {
       setSetupError(null);
       setUser(u);
       try {
-        if (u) await ensureUserDoc(u.uid);
+        let resume: string | null = null;
+        if (u) {
+          await ensureUserDoc(u.uid);
+          // Reopen a conversation that was still active when the app closed.
+          resume = await findActiveConnection(u.uid).catch(() => null);
+        }
         if (!active || currentVersion !== version) return;
+        setResumeConnectionId(resume);
         setCheckingAuth(false);
         if (u) {
           const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
@@ -87,12 +95,12 @@ export default function RootNavigator() {
   return (
     <NavigationContainer>
       {user ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={resumeConnectionId ? 'Chat' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />
           <Stack.Screen name="Code" component={CodeScreen} />
           <Stack.Screen name="EnterCode" component={EnterCodeScreen} />
           <Stack.Screen name="Request" component={RequestScreen} />
-          <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="Chat" component={ChatScreen} initialParams={resumeConnectionId ? { connectionId: resumeConnectionId } : undefined} />
           <Stack.Screen name="Ended" component={EndedScreen} />
         </Stack.Navigator>
       ) : (

@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { doc, updateDoc } from '@react-native-firebase/firestore';
+import { db } from '../firebase/client';
 
 export async function registerForPush(uid: string): Promise<void> {
   if (Platform.OS === 'web') return;

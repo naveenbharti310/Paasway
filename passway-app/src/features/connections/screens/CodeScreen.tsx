@@ -1,10 +1,9 @@
 import { errorMessage } from '../../../services/errors';
-import { TID_TTL_MS } from '../../../types/models';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../../../firebase/config';
+import { collection, query, where, limit, onSnapshot } from '@react-native-firebase/firestore';
+import { db, auth } from '../../../firebase/client';
 import { deactivateTid } from '../api/connections';
 import { colors } from '../../../theme/colors';
 import type { RootStackParamList, RootNavigationProp } from '../../../navigation/types';
@@ -16,7 +15,7 @@ type CodeRouteProp = RouteProp<RootStackParamList, 'Code'>;
 export default function CodeScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<CodeRouteProp>();
-  const { tid, expiresAt } = params;
+  const { tid, createdAt, expiresAt } = params;
   const [secondsLeft, setSecondsLeft] = useState(Math.max(0, Math.round((expiresAt - Date.now()) / 1000)));
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +37,7 @@ export default function CodeScreen() {
       collection(db, 'connectionRequests'),
       where('generatorId', '==', auth.currentUser?.uid ?? ''),
       where('tid', '==', tid),
-      where('tidCreatedAt', '==', expiresAt - TID_TTL_MS),
+      where('tidCreatedAt', '==', createdAt),
       where('status', '==', 'pending'),
       limit(1)
     );
@@ -56,14 +55,14 @@ export default function CodeScreen() {
       }
     }, (err) => setError(errorMessage(err, 'Could not listen for a connection request.')));
     return unsubscribe;
-  }, [tid, expiresAt, navigation]);
+  }, [tid, createdAt, navigation]);
 
   async function handleCancel() {
     if (canceling) return;
     setCanceling(true);
     setError(null);
     try {
-      await deactivateTid(tid);
+      await deactivateTid({ tid });
       navigation.replace('Generate');
     } catch (err) {
       setError(errorMessage(err, 'Could not cancel the code. Try again.'));
@@ -81,7 +80,7 @@ export default function CodeScreen() {
       <ScreenHeader title="your code" showBack={false} />
       <View style={styles.center}>
         <View style={styles.codeCard}>
-          <Text style={styles.codeLabel}>tid</Text>
+          <Text style={styles.codeLabel}>code</Text>
           <Text style={styles.codeText}>{tid}</Text>
         </View>
         <Text style={[styles.timer, urgent && styles.timerUrgent]}>{`Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`}</Text>

@@ -35,6 +35,7 @@ service cloud.firestore {
       }
     }
     match /reports/{reportId} { allow read, write: if false; }
+    match /blocks/{blockId} { allow read, write: if false; }
     match /rateLimits/{counterId} { allow read, write: if false; }
   }
 }

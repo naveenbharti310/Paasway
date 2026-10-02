@@ -1,9 +1,9 @@
 import { errorMessage } from '../../../services/errors';
 import type { RootNavigationProp } from '../../../navigation/types';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { auth } from '../../../firebase/config';
+import { auth } from '../../../firebase/client';
 import { generateTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
@@ -36,9 +36,9 @@ export default function GenerateScreen() {
     setError(null);
     try {
       const { lat, lng } = await getCurrentLocation();
-      const { tid, expiresAt } = await generateTid(lat, lng, name.trim());
+      const { tid, createdAt, expiresAt } = await generateTid({ lat, lng, displayName: name.trim() });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
-      navigation.navigate('Code', { tid, expiresAt });
+      navigation.navigate('Code', { tid, createdAt, expiresAt });
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not generate a code. Try again.'));
     } finally {
@@ -54,7 +54,7 @@ export default function GenerateScreen() {
         <Text style={styles.helper}>Met someone new? Generate a code to connect.</Text>
         <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} />
         {error && <Text style={styles.error}>{error}</Text>}
-        <Button label="Generate TID" onPress={handleGenerate} loading={loading} />
+        <Button label="Generate code" onPress={handleGenerate} loading={loading} />
         <TouchableOpacity disabled={loading} onPress={() => navigation.navigate('EnterCode')}>
           <Text style={styles.link}>Have a code instead?</Text>
         </TouchableOpacity>

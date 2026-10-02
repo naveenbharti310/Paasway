@@ -42,3 +42,6 @@ test('clients cannot read or write temporary code documents', async () => { awai
 test('clients cannot bypass report validation', async () => { await assertFails(setDoc(doc(user(), 'reports/forged'), { reporterId: 'alice', reportedId: 'carol' })); });
 test('clients cannot change rate limits', async () => { await assertFails(setDoc(doc(user(), 'rateLimits/alice_generate'), { events: [] })); });
 test('signed out requests are denied', async () => { await assertFails(getDoc(doc(environment.unauthenticatedContext().firestore(), 'users/alice'))); });
+test('clients cannot read or write blocks', async () => { await assertFails(getDoc(doc(user(), 'blocks/alice:bob'))); await assertFails(setDoc(doc(user('bob'), 'blocks/bob:alice'), { blockerId: 'bob' })); });
+test('a participant can find their active connection', async () => { await assertSucceeds(getDocs(query(collection(user('bob'), 'connections'), where('userB', '==', 'bob'), where('status', '==', 'active')))); await assertSucceeds(getDocs(query(collection(user(), 'connections'), where('userA', '==', 'alice'), where('status', '==', 'active')))); });
+test('an unscoped connection query is denied', async () => { await assertFails(getDocs(query(collection(user('carol'), 'connections'), where('status', '==', 'active')))); });

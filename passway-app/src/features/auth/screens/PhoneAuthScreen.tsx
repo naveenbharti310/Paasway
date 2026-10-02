@@ -1,16 +1,14 @@
 import { errorMessage } from '../../../services/errors';
-import React, { useRef, useState } from 'react';
+import { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { auth, firebaseConfig, isFirebaseConfigured } from '../../../firebase/config';
+import { signInWithPhoneNumber, type ConfirmationResult } from '@react-native-firebase/auth';
+import { auth } from '../../../firebase/client';
 import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 
 export default function PhoneAuthScreen() {
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
@@ -19,10 +17,6 @@ export default function PhoneAuthScreen() {
 
   async function handleSendCode() {
     if (loading) return;
-    if (!isFirebaseConfigured) {
-      setError('Firebase setup is missing. Add the project settings to your .env file.');
-      return;
-    }
     if (!/^\+[1-9]\d{7,14}$/.test(phone.replace(/\s/g, ''))) {
       setError('Enter a phone number, with country code');
       return;
@@ -30,8 +24,9 @@ export default function PhoneAuthScreen() {
     setLoading(true);
     setError(null);
     try {
-      if (!recaptchaVerifier.current) throw new Error('Phone verification is not ready. Try again.');
-      const result = await signInWithPhoneNumber(auth, phone.replace(/\s/g, ''), recaptchaVerifier.current);
+      // The native SDK verifies the device with Play Integrity or silent APNs
+      // and falls back to a reCAPTCHA page only when that is not possible.
+      const result = await signInWithPhoneNumber(auth, phone.replace(/\s/g, ''));
       setConfirmation(result);
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not send a code. Check the number and try again.'));
@@ -61,7 +56,6 @@ export default function PhoneAuthScreen() {
 
   return (
     <View style={styles.container}>
-      {isFirebaseConfigured && <FirebaseRecaptchaVerifierModal ref={recaptchaVerifier} firebaseConfig={firebaseConfig} attemptInvisibleVerification />}
       <Text style={styles.brand}>Passway</Text>
       <View style={styles.center}>
         <IconBadge glyph="\u25C8" />

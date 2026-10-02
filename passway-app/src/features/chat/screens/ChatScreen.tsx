@@ -1,17 +1,24 @@
 import { errorMessage } from '../../../services/errors';
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { collection, query, orderBy, onSnapshot, doc, limitToLast } from 'firebase/firestore';
-import { db, auth } from '../../../firebase/config';
+import { collection, query, orderBy, onSnapshot, doc, limitToLast } from '@react-native-firebase/firestore';
+import { db, auth } from '../../../firebase/client';
 import { sendMessage } from '../api/messages';
 import { endConnection } from '../../connections/api/connections';
-import { fileReport } from '../../safety/api/reports';
+import { fileReport, blockUser } from '../../safety/api/reports';
 import { colors } from '../../../theme/colors';
-import type { RootStackParamList, RootNavigationProp } from '../../../navigation/types';
+import type { RootStackParamList, RootNavigationProp, EndOutcome } from '../../../navigation/types';
 import { Message, Connection } from '../../../types/models';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
+
+function outcomeFor(connection: Connection | null, uid: string): EndOutcome {
+  if (connection?.reportedBy === uid) return 'reported';
+  if (connection?.blockedBy === uid) return 'blocked';
+  if (connection?.endReason === 'idle') return 'idle';
+  return 'ended';
+}
 
 const REPORT_REASONS = [
   'Inappropriate messages',
@@ -44,7 +51,7 @@ export default function ChatScreen() {
       setConnection(data);
       if ((!data || data.status === 'ended') && !navigatedAway.current) {
         navigatedAway.current = true;
-        navigation.replace('Ended', { reported: data?.reportedBy === currentUserId });
+        navigation.replace('Ended', { outcome: outcomeFor(data, currentUserId) });
       }
     }, (err) => setError(errorMessage(err, 'Could not load this connection.')));
     return unsubscribe;
@@ -62,10 +69,10 @@ export default function ChatScreen() {
   const otherName = connection ? (otherIsA ? connection.userAName : connection.userBName) : '';
   const otherId = connection ? (otherIsA ? connection.userA : connection.userB) : '';
 
-  function leaveChat(reported = false) {
+  function leaveChat(outcome: EndOutcome = 'ended') {
     if (navigatedAway.current) return;
     navigatedAway.current = true;
-    navigation.replace('Ended', { reported });
+    navigation.replace('Ended', { outcome });
   }
 
   async function handleSend() {
@@ -74,7 +81,7 @@ export default function ChatScreen() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendMessage(connectionId, text);
+      const result = await sendMessage({ connectionId, content: text });
       setDraft((current) => current.trim() === text ? '' : current);
       if (result.earlyContactShare) setSafetyNotice(true);
     } catch (err) {
@@ -90,10 +97,25 @@ export default function ChatScreen() {
     setEnding(true);
     setError(null);
     try {
-      await endConnection(connectionId);
+      await endConnection({ connectionId });
       leaveChat();
     } catch (err) {
       setError(errorMessage(err, 'Could not end the connection. Try again.'));
+    } finally {
+      setEnding(false);
+    }
+  }
+
+  async function handleBlock() {
+    if (ending || submitting) return;
+    setMenuVisible(false);
+    setEnding(true);
+    setError(null);
+    try {
+      await blockUser({ connectionId });
+      leaveChat('blocked');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not block this person. Try again.'));
     } finally {
       setEnding(false);
     }
@@ -104,9 +126,9 @@ export default function ChatScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await fileReport(connectionId, otherId, reason);
+      await fileReport({ connectionId, reportedId: otherId, reason });
       setReportVisible(false);
-      leaveChat(true);
+      leaveChat('reported');
     } catch (err) {
       setError(errorMessage(err, 'Your report was not saved. Try again.'));
     } finally {
@@ -152,6 +174,9 @@ export default function ChatScreen() {
               }}
             >
               <Text style={styles.sheetRowDanger}>Report and end connection</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.sheetRow} onPress={handleBlock} disabled={ending || submitting}>
+              <Text style={styles.sheetRowDanger}>Block and end connection</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={handleEnd} disabled={ending || submitting}>
               <Text style={styles.sheetRowText}>End connection</Text>

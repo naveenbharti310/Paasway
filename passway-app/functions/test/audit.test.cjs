@@ -7,12 +7,13 @@ const originalRandomTid = codeGenerator.randomTid;
 const { generateTid, redeemTid, deactivateTid } = require('../lib/handlers/tids');
 const { respondToRequest, endConnection } = require('../lib/handlers/connections');
 const { sendMessage } = require('../lib/handlers/messages');
-const { fileReport } = require('../lib/handlers/reports');
+const { fileReport, blockUser } = require('../lib/handlers/reports');
+const { closeIdleConnections } = require('../lib/services/connections');
 const validation = require('../lib/lib/validation');
 const { retentionDate } = require('../lib/lib/retention');
 const { withinRateLimit } = require('../lib/lib/rateLimits');
 const { encodeGeohash } = require('../lib/geo');
-const { screenMessage } = require('../lib/moderation');
+const { screenMessage, mentionsContactInfo } = require('../lib/moderation');
 const { sendPushNotification } = require('../lib/push');
 const originalFetch = global.fetch;
 let db;
@@ -65,7 +66,7 @@ test('reject code generation by a banned account', async () => {
   await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'permission-denied' });
 });
 test('reject redemption of your own code', async () => { code(); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'invalid-argument' }); });
-test('reject a remote redemption', async () => { code(); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 0, lng: 0, displayName: 'Bob' }, other), { code: 'permission-denied' }); });
+test('reject a remote redemption with the inactive code message', async () => { code(); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 0, lng: 0, displayName: 'Bob' }, other), { code: 'not-found' }); });
 test('reject an expired code', async () => { code('active', { expiresAt: Date.now() }); await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other), { code: 'not-found' }); });
 test('claim a code only once and return request expiry', async () => {
   code(); const first = await call(redeemTid, { tid: 'ab12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
@@ -117,3 +118,75 @@ test('background retention repair ignores unrelated active updates', async () =>
   await syncConnectionRetention.run({ data: { before: { data: () => ({ status: 'active' }) }, after: { data: () => ({ status: 'active' }), ref: db.collection('connections').doc('chat1') } } });
   assert.equal(db.read('connections/chat1/messages/m1').deleteAt, undefined);
 });
+
+const redeemAsBob = () => call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
+test('return the code creation time with a generated code', async () => {
+  const result = await call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' });
+  assert.equal(result.expiresAt - result.createdAt, 300000);
+  assert.equal(db.read(`tids/${result.tid}`).createdAt, result.createdAt);
+});
+test('a report blocks the reported person from redeeming future codes', async () => {
+  connection();
+  await call(fileReport, { connectionId: 'chat1', reportedId: other, reason: 'Spam' });
+  assert.equal(db.read('blocks/alice:bob').blockedId, other);
+  code();
+  await assert.rejects(redeemAsBob(), { code: 'not-found' });
+  assert.equal(db.read('tids/AB12').status, 'active');
+});
+test('a block applies in both directions', async () => {
+  connection();
+  await call(blockUser, { connectionId: 'chat1' }, other);
+  assert.equal(db.read('connections/chat1').status, 'ended');
+  assert.equal(db.read('connections/chat1').blockedBy, other);
+  code();
+  await assert.rejects(redeemAsBob(), { code: 'not-found' });
+});
+test('only a participant can block through a connection', async () => {
+  connection();
+  await assert.rejects(call(blockUser, { connectionId: 'chat1' }, 'charlie'), { code: 'permission-denied' });
+  assert.equal(db.read('blocks/charlie:alice'), undefined);
+});
+test('blocking keeps an existing report hold', async () => {
+  connection();
+  await call(fileReport, { connectionId: 'chat1', reportedId: other, reason: 'Spam' });
+  const held = db.read('connections/chat1').deleteAt.getTime();
+  await call(blockUser, { connectionId: 'chat1' });
+  assert.equal(db.read('connections/chat1').deleteAt.getTime(), held);
+});
+test('messages expire on their own and record connection activity', async () => {
+  connection('active', { lastActivityAt: 1 });
+  const before = Date.now();
+  await call(sendMessage, { connectionId: 'chat1', content: 'Hi' });
+  const [message] = [...db.values.entries()].filter(([path]) => path.startsWith('connections/chat1/messages/')).map(([, value]) => value);
+  assert.ok(message.deleteAt.getTime() >= message.sentAt + 72 * 3600000);
+  assert.ok(db.read('connections/chat1').lastActivityAt >= before);
+});
+test('a message notifies the other participant without its content', async () => {
+  connection();
+  db.seed('users/bob', { status: 'active', pushToken: 'ExponentPushToken[bob]' });
+  const sent = [];
+  global.fetch = async (_url, init) => { sent.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ data: { status: 'ok' } }) }; };
+  await call(sendMessage, { connectionId: 'chat1', content: 'Secret plan' });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'ExponentPushToken[bob]');
+  assert.equal(JSON.stringify(sent[0]).includes('Secret plan'), false);
+});
+test('close connections idle beyond the retention window', async () => {
+  const now = Date.now();
+  connection('active', { lastActivityAt: now - 73 * 3600000 });
+  db.seed('connections/chat2', { connectionId: 'chat2', userA: uid, userB: other, status: 'active', createdAt: now, lastActivityAt: now });
+  db.seed('connections/chat1/messages/m1', { content: 'old', sentAt: now - 73 * 3600000 });
+  assert.equal(await closeIdleConnections(now), 1);
+  const closed = db.read('connections/chat1');
+  assert.equal(closed.status, 'ended');
+  assert.equal(closed.endedBy, 'system');
+  assert.equal(closed.endReason, 'idle');
+  assert.ok(db.read('connections/chat1/messages/m1').deleteAt instanceof Date);
+  assert.equal(db.read('connections/chat2').status, 'active');
+});
+for (const sample of ['call me on +91 98765 43210', 'mail me at a.b@example.com', 'add me on insta', 'my snap is @night_owl', 'wa.me/123', 'find me on Telegram']) {
+  test(`detect contact details in "${sample}"`, () => assert.equal(mentionsContactInfo(sample), true));
+}
+for (const sample of ['see you at 5', 'the cafe was lovely', 'meet @ 6 near gate 2', 'I have 2 dogs']) {
+  test(`ignore ordinary text "${sample}"`, () => assert.equal(mentionsContactInfo(sample), false));
+}

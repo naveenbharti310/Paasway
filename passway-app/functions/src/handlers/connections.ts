@@ -1,18 +1,17 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { HttpsError } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db } from '../lib/firebase';
+import { authedCallable } from '../lib/callable';
 import { assertNotBanned } from '../lib/accounts';
-import { payload, documentId, otherParticipant } from '../lib/validation';
-import { retentionDate, applyMessageRetention } from '../lib/retention';
-import { MESSAGE_RETENTION_HOURS } from '../constants';
+import { documentId } from '../lib/validation';
+import { log } from '../lib/logger';
+import { connectionRef, endConnectionAs, closeIdleConnections } from '../services/connections';
 
-export const respondToRequest = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
-  const data = payload(request.data);
+export const respondToRequest = authedCallable(async (uid, data) => {
   const requestId = documentId(data.requestId, 'Request');
   if (typeof data.accept !== 'boolean') throw new HttpsError('invalid-argument', 'Choose whether to accept the request.');
   const requestRef = db.collection('connectionRequests').doc(requestId);
-  const connectionRef = db.collection('connections').doc();
+  const newConnectionRef = db.collection('connections').doc();
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(requestRef);
     const pending = snap.data();
@@ -26,14 +25,15 @@ export const respondToRequest = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'This request is no longer available.');
     }
     if (data.accept) {
-      if (pending.expiresAt <= Date.now() || code.expiresAt <= Date.now()) throw new HttpsError('failed-precondition', 'This request has expired.');
+      const now = Date.now();
+      if (pending.expiresAt <= now || code.expiresAt <= now) throw new HttpsError('failed-precondition', 'This request has expired.');
+      if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
       await assertNotBanned(uid, tx);
       await assertNotBanned(pending.requesterId, tx);
-      if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
-      tx.create(connectionRef, { connectionId: connectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, originTid: pending.tid, status: 'active', createdAt: Date.now() });
-      tx.update(requestRef, { status: 'accepted', connectionId: connectionRef.id });
+      tx.create(newConnectionRef, { connectionId: newConnectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, originTid: pending.tid, status: 'active', createdAt: now, lastActivityAt: now });
+      tx.update(requestRef, { status: 'accepted', connectionId: newConnectionRef.id });
       tx.update(tidRef, { status: 'connected' });
-      return { connectionId: connectionRef.id };
+      return { connectionId: newConnectionRef.id };
     }
     tx.update(requestRef, { status: 'declined' });
     tx.update(tidRef, { status: 'expired' });
@@ -41,20 +41,12 @@ export const respondToRequest = onCall(async (request) => {
   });
 });
 
-export const endConnection = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
-  const connectionId = documentId(payload(request.data).connectionId, 'Connection');
-  const connectionRef = db.collection('connections').doc(connectionId);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(connectionRef);
-    const connection = snap.data();
-    if (!snap.exists || !connection) throw new HttpsError('not-found', 'Connection not found.');
-    otherParticipant(connection as { userA: string; userB: string }, uid);
-    const endedAt = connection.endedAt ?? Date.now();
-    const deleteAt = retentionDate(connection.deleteAt, new Date(endedAt + MESSAGE_RETENTION_HOURS * 60 * 60 * 1000));
-    tx.update(connectionRef, { status: 'ended', endedBy: connection.endedBy ?? uid, endedAt, deleteAt });
-  });
-  await applyMessageRetention(connectionRef);
+export const endConnection = authedCallable(async (uid, data) => {
+  await endConnectionAs(connectionRef(documentId(data.connectionId, 'Connection')), uid);
   return {};
+});
+
+export const closeIdleConnectionsJob = onSchedule({ schedule: 'every 60 minutes', retryCount: 1 }, async () => {
+  const closed = await closeIdleConnections();
+  if (closed) log.info('Closed idle connections.', { closed });
 });

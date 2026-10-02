@@ -9,12 +9,21 @@ class Reference {
   collection(name) { return new Query(this.db, `${this.path}/${name}`); }
   async get() { const snap = new Snapshot(this, this.db.values.get(this.path)); this.db.afterRead?.(this.path); return snap; }
 }
+const OPS = { '==': (a, b) => a === b, '<': (a, b) => a < b, '>': (a, b) => a > b, '<=': (a, b) => a <= b, '>=': (a, b) => a >= b };
+function list(db, values, query) {
+  return [...values.entries()].filter(([path]) => path.startsWith(`${query.path}/`) && path.slice(query.path.length + 1).indexOf('/') === -1)
+    .filter(([, data]) => query.filters.every(([field, op, value]) => OPS[op](data[field], value)))
+    .sort(([a], [b]) => a.localeCompare(b)).map(([path, data]) => new Snapshot(new Reference(db, path), data))
+    .filter((snap) => snap.id > query.cursor).slice(0, query.cap);
+}
 class Query {
-  constructor(db, path, cap = Infinity, cursor = '') { this.db = db; this.path = path; this.cap = cap; this.cursor = cursor; }
+  constructor(db, path, cap = Infinity, cursor = '', filters = []) { this.db = db; this.path = path; this.cap = cap; this.cursor = cursor; this.filters = filters; }
+  where(field, op, value) { return new Query(this.db, this.path, this.cap, this.cursor, [...this.filters, [field, op, value]]); }
+  async get() { return { docs: list(this.db, this.db.values, this) }; }
   doc(id = `auto${String(++this.db.sequence).padStart(6, '0')}`) { return new Reference(this.db, `${this.path}/${id}`); }
   orderBy() { return this; }
-  limit(cap) { return new Query(this.db, this.path, cap, this.cursor); }
-  startAfter(snapshot) { return new Query(this.db, this.path, this.cap, snapshot.id); }
+  limit(cap) { return new Query(this.db, this.path, cap, this.cursor, this.filters); }
+  startAfter(snapshot) { return new Query(this.db, this.path, this.cap, snapshot.id, this.filters); }
 }
 class MemoryFirestore {
   constructor() { this.values = new Map(); this.sequence = 0; this.queue = Promise.resolve(); this.pageWrites = []; }
@@ -32,10 +41,7 @@ class MemoryFirestore {
       get: async (ref) => {
         if (writes) throw new Error('Transaction reads must precede writes.');
         if (ref instanceof Reference) return new Snapshot(ref, values.get(ref.path));
-        const docs = [...values.entries()].filter(([path]) => path.startsWith(`${ref.path}/`) && path.slice(ref.path.length + 1).indexOf('/') === -1)
-          .sort(([a], [b]) => a.localeCompare(b)).map(([path, data]) => new Snapshot(new Reference(this, path), data))
-          .filter((snap) => snap.id > ref.cursor).slice(0, ref.cap);
-        return { docs };
+        return { docs: list(this, values, ref) };
       },
       create: (ref, data) => { writes++; if (values.has(ref.path)) throw new Error('Document already exists.'); values.set(ref.path, clone(data)); },
       set: (ref, data) => { writes++; values.set(ref.path, clone(data)); },
