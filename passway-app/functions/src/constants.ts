@@ -1,0 +1,11 @@
+// Kept in sync by hand with src/types/models.ts in the app package.
+// The two packages deploy separately (this one to Cloud Functions, the
+// other to Expo), so in a larger project these would move into one
+// shared package both sides import instead of being duplicated.
+export const TID_TTL_MS = 5 * 60 * 1000;
+export const GEOHASH_PRECISION = 7;
+export const MESSAGE_RETENTION_HOURS = 72;
+export const REPORTED_MESSAGE_RETENTION_DAYS = 30;
+export const MAX_TID_GENERATIONS_PER_HOUR = 10;
+export const MAX_FAILED_REDEMPTIONS_PER_HOUR = 15;
+export const TID_CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
