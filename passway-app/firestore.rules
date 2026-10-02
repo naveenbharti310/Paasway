@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // status is intentionally excluded from what a client can set on
+      // create or change on update, only Cloud Functions, via the Admin
+      // SDK, can ban, unban, or mark an account reported. Without this,
+      // a banned account could simply write itself back to active.
+      allow create: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.status == 'active';
+      allow update: if request.auth != null && request.auth.uid == userId
+        && request.resource.data.status == resource.data.status;
+    }
+
+    // TIDs are never read directly by clients. The generator gets the
+    // code back as the return value of the generateTid function, and
+    // nobody else has a reason to query this collection at all.
+    match /tids/{tidId} {
+      allow read, write: if false;
+    }
+
+    match /connectionRequests/{requestId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.requesterId || request.auth.uid == resource.data.generatorId);
+      allow write: if false; // Cloud Functions only, via the Admin SDK.
+    }
+
+    match /connections/{connectionId} {
+      allow read: if request.auth != null &&
+        (request.auth.uid == resource.data.userA || request.auth.uid == resource.data.userB);
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if request.auth != null &&
+          (request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userA ||
+           request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userB);
+        allow write: if false; // Sent through sendMessage so every message is screened first.
+      }
+    }
+
+    match /reports/{reportId} {
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.reporterId;
+      allow read, update, delete: if false;
+    }
+
+    match /rateLimits/{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
