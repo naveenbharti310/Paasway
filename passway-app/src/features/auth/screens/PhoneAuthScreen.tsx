@@ -58,7 +58,7 @@ export default function PhoneAuthScreen() {
     <View style={styles.container}>
       <Text style={styles.brand}>Passway</Text>
       <View style={styles.center}>
-        <IconBadge glyph="\u25C8" />
+        <IconBadge glyph={'\u25C8'} />
         {!confirmation ? (
           <>
             <Text style={styles.helper}>Verify your number to get started. It is never shown to anyone you connect with.</Text>

@@ -1,0 +1,12 @@
+[
+  { "eventType": "VIEW_CLICKED", "elementDescriptors": [{ "resourceId": "welcome-skip" }] },
+  { "eventType": "DELAYED_MESSAGE_POSTED", "delayTime": 1500 },
+  { "eventType": "VIEW_CLICKED", "elementDescriptors": [{ "resourceId": "get-started" }] },
+  { "eventType": "DELAYED_MESSAGE_POSTED", "delayTime": 2000 },
+  { "eventType": "VIEW_TEXT_CHANGED", "replacementText": "+919999900002", "elementDescriptors": [{ "resourceId": "phone-input" }] },
+  { "eventType": "VIEW_CLICKED", "elementDescriptors": [{ "resourceId": "send-code" }] },
+  { "eventType": "DELAYED_MESSAGE_POSTED", "delayTime": 12000 },
+  { "eventType": "VIEW_TEXT_CHANGED", "replacementText": "123456", "elementDescriptors": [{ "resourceId": "verify-input" }] },
+  { "eventType": "VIEW_CLICKED", "elementDescriptors": [{ "resourceId": "verify" }] },
+  { "eventType": "DELAYED_MESSAGE_POSTED", "delayTime": 10000 }
+]

@@ -55,7 +55,7 @@ export default function GenerateScreen() {
         </TouchableOpacity>
       </View>
       <View style={styles.center}>
-        <IconBadge glyph="\u2318" />
+        <IconBadge glyph={'\u2318'} />
         <Text style={styles.helper}>Met someone new? Generate a code to connect.</Text>
         <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} testID="name-input" />
         {error && <Text style={styles.error}>{error}</Text>}

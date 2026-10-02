@@ -2,7 +2,17 @@
 
 Passway depends on phone sign in, location, App Check and notifications, so the full flow has to be checked on real phones. This page covers the automated flows and a manual checklist for two people.
 
-## Setup
+## Free setup that is already running
+
+1. Every Android build is made on Expo's free plan with the `preview` profile. Expo gives a link and a QR code to install the APK on any Android phone.
+2. Builds are tested on real phones in Firebase Test Lab using its free daily quota (5 real phone runs and 10 virtual phone runs).
+3. `passway-app/.maestro/robo-script.json` drives Test Lab through the welcome pages and sign in with a test number. Robo directives then fill the age boxes (`age-day` 15, `age-month` 06, `age-year` 1995) and the name field (`name-input`), and Robo explores the rest of the app on its own. The age boxes are typed by directives rather than the script because Test Lab draws its progress banner over the middle of the screen while a script runs.
+
+To run it again after a new build, upload the APK and the script to the Test Lab bucket and start a run from the Test Lab page in the Firebase console, choosing Robo test and the script file.
+
+iPhones need a paid Apple developer account, so there is no iOS build yet.
+
+## Setup for a paid project
 
 1. Finish the Firebase setup in the [app README](../passway-app/README.md), including App Check debug tokens for each test phone.
 2. Add test phone numbers in Firebase under Authentication, Sign in method, Phone.
