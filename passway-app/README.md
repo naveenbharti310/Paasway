@@ -26,7 +26,28 @@ npx expo export --platform all
 
 `npm run check` runs all of these in order.
 
-## Firebase setup
+## Live setup
+
+Passway is already set up on free plans. Nothing here costs money.
+
+| Part | Where |
+| --- | --- |
+| Firebase project | `passway-2ddc8` on the Spark plan, Firestore in Mumbai |
+| Server | `https://passway-api.vercel.app` on Vercel Hobby |
+| App builds | Expo project `@naveenbharti310s-team/passway` |
+| Test numbers | `+91 99999 00001` and `+91 99999 00002`, code `123456` |
+
+To ship a change:
+
+1. Server: from `passway-app/functions`, run `npx vercel deploy --prod`.
+2. Rules and indexes: from `passway-app`, run `npx firebase-tools deploy --project passway-2ddc8 --only firestore:rules,firestore:indexes`.
+3. App: from `passway-app`, run `npx eas-cli build --platform android --profile preview`. Expo emails a link to install the new APK.
+
+Vercel holds `FIREBASE_SERVICE_ACCOUNT`, `CRON_SECRET`, `ENFORCE_APP_CHECK=false` and `MODERATION_PROVIDER=rules`. Expo holds `GOOGLE_SERVICES_JSON` as a secret file and a push key that can only send notifications. See the free hosting section in [architecture](../docs/architecture.md) for the limits of this setup.
+
+## Firebase setup on a paid plan
+
+These steps apply when moving to the Blaze plan and Cloud Functions.
 
 1. Create a Firebase project. Enable Phone authentication, Firestore, Cloud Functions, Cloud Scheduler and App Check.
 2. Register an Android app with package `com.passway.app` and an iOS app with bundle ID `com.passway.app`. Download `google-services.json` and `GoogleService-Info.plist` into this folder. Both are ignored by Git. For EAS builds, upload them as file secrets and set `GOOGLE_SERVICES_JSON` and `GOOGLE_SERVICES_PLIST` to their paths.

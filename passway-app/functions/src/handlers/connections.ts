@@ -4,8 +4,8 @@ import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { assertAccountActive } from '../lib/accounts';
 import { documentId } from '../lib/validation';
-import { log } from '../lib/logger';
-import { connectionRef, endConnectionAs, closeIdleConnections } from '../services/connections';
+import { connectionRef, endConnectionAs } from '../services/connections';
+import { runMaintenance } from '../services/cleanup';
 
 export const respondToRequest = authedCallable(async (uid, data) => {
   const requestId = documentId(data.requestId, 'Request');
@@ -47,6 +47,5 @@ export const endConnection = authedCallable(async (uid, data) => {
 });
 
 export const closeIdleConnectionsJob = onSchedule({ schedule: 'every 60 minutes', retryCount: 1 }, async () => {
-  const closed = await closeIdleConnections();
-  if (closed) log.info('Closed idle connections.', { closed });
+  await runMaintenance();
 });

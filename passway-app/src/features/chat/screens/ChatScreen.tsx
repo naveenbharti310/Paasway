@@ -66,7 +66,13 @@ export default function ChatScreen() {
   useEffect(() => {
     const q = query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'asc'), limitToLast(200));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map((d) => d.data() as Message));
+      // Expired messages can stay in the database until the next cleanup
+      // sweep, so hide anything past its deletion time.
+      const now = Date.now();
+      setMessages(snapshot.docs.filter((d) => {
+        const deleteAt = d.get('deleteAt') as { toMillis?: () => number } | undefined;
+        return !deleteAt?.toMillis || deleteAt.toMillis() > now;
+      }).map((d) => d.data() as Message));
     }, (err) => setError(errorMessage(err, 'Could not load messages.')));
     return unsubscribe;
   }, [connectionId]);

@@ -107,3 +107,31 @@ test('account deletion ends open chats using real queries', async () => {
     assert.equal((await collection('tids').doc('AB12').get()).data().status, 'deactivated');
   } finally { firebase.auth = original; }
 });
+test('the cleanup sweep deletes only expired documents, including messages', { timeout: 60000 }, async () => {
+  const { deleteExpired } = require('../lib/services/cleanup');
+  const past = new Date(Date.now() - 1000);
+  const future = new Date(Date.now() + 3600000);
+  await seedConnection();
+  await collection('connections').doc('chat1').collection('messages').doc('old').set({ content: 'old', deleteAt: past });
+  await collection('connections').doc('chat1').collection('messages').doc('new').set({ content: 'new', deleteAt: future });
+  await collection('tids').doc('OLD1').set({ status: 'expired', deleteAt: past });
+  await collection('tids').doc('NEW1').set({ status: 'active', deleteAt: future });
+  await collection('rateLimits').doc('alice_x').set({ events: [], deleteAt: past });
+  await collection('accountHolds').doc('banned').set({ status: 'banned' });
+  const deleted = await deleteExpired();
+  assert.equal(deleted, 3);
+  const messages = await collection('connections').doc('chat1').collection('messages').get();
+  assert.deepEqual(messages.docs.map((doc) => doc.id), ['new']);
+  assert.equal((await collection('tids').doc('NEW1').get()).exists, true);
+  assert.equal((await collection('tids').doc('OLD1').get()).exists, false);
+  assert.equal((await collection('accountHolds').doc('banned').get()).exists, true);
+  assert.equal((await collection('connections').doc('chat1').get()).exists, true);
+});
+test('maintenance runs at most once per interval even when called in parallel', { timeout: 60000 }, async () => {
+  const { maybeRunMaintenance } = require('../lib/services/cleanup');
+  const now = Date.now();
+  const runs = await Promise.all([maybeRunMaintenance(now), maybeRunMaintenance(now), maybeRunMaintenance(now)]);
+  assert.equal(runs.filter(Boolean).length, 1);
+  assert.equal(await maybeRunMaintenance(now + 60000), false);
+  assert.equal(await maybeRunMaintenance(now + 16 * 60000), true);
+});

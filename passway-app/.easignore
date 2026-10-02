@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+android/
+ios/
+functions/
+test/
+.maestro/
+*.log
+.env
+.env.*
+google-services.json
+GoogleService-Info.plist

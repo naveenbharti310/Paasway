@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["bom1"],
+  "buildCommand": "npm run typecheck && mkdir -p public && echo Passway > public/index.html",
+  "outputDirectory": "public",
+  "functions": {
+    "api/**/*.ts": { "maxDuration": 60 }
+  },
+  "crons": [{ "path": "/api/cron", "schedule": "0 2 * * *" }]
+}

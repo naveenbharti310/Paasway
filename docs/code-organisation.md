@@ -36,12 +36,16 @@ Shared components should not import feature code. A feature may use another feat
 | `functions/src/handlers/messages.ts` | Validate and store messages |
 | `functions/src/handlers/accounts.ts` | Confirm age and delete an account |
 | `functions/src/handlers/reports.ts` | Store reports, block people, end those conversations and extend retention |
+| `functions/api/[name].ts` | Vercel entry point that serves each callable at `/api/<name>` |
+| `functions/api/cron.ts` | Daily Vercel cron that runs the cleanup sweep |
+| `functions/src/http/server.ts` | Token checks and the callable request and response format for hosts other than Cloud Functions |
+| `functions/src/services/cleanup.ts` | Close idle connections and delete expired documents |
 | `functions/src/config.ts` | Region, instance limits and the App Check parameter |
 | `functions/src/services/connections.ts` | Shared logic for ending connections and closing idle ones |
 | `functions/src/lib/callable.ts` | Sign in, App Check and payload checks for every callable |
 | `functions/src/lib/blocks.ts` | Record and check two way blocks |
 | `functions/src/lib/logger.ts` | Structured logging |
-| `functions/src/lib/firebase.ts` | Initialise the Admin SDK and expose the database client |
+| `functions/src/lib/firebase.ts` | Initialise the Admin SDK, using `FIREBASE_SERVICE_ACCOUNT` when it is set, and expose the database and auth clients |
 | `functions/src/lib/accounts.ts` | Check that an account is active, has a confirmed age and has no hold, and validate birth dates |
 | `functions/src/lib/rateLimits.ts` | Enforce the existing transaction based rate limits |
 | `functions/src/lib/tid.ts` | Generate a candidate code using secure randomness |

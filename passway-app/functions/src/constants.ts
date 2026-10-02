@@ -19,3 +19,5 @@ export const RETENTION_PAGE_SIZE = 200;
 export const IDLE_SWEEP_BATCH = 100;
 export const FLAGS_BEFORE_REVIEW = 3;
 export const REPORTED_HOLD_MS = 180 * DAY_MS;
+export const CLEANUP_BATCH = 300;
+export const CLEANUP_INTERVAL_MS = 15 * 60 * 1000;

@@ -38,5 +38,6 @@ service cloud.firestore {
     match /blocks/{blockId} { allow read, write: if false; }
     match /accountHolds/{holdId} { allow read, write: if false; }
     match /rateLimits/{counterId} { allow read, write: if false; }
+    match /system/{documentId} { allow read, write: if false; }
   }
 }

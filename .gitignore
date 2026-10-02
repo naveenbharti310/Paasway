@@ -29,3 +29,7 @@ passway-app/ios/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local deploy links
+.vercel/
+passway-app/functions/public/

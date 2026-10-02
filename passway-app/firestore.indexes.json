@@ -39,46 +39,18 @@
   ],
   "fieldOverrides": [
     {
-      "collectionGroup": "tids",
-      "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
       "collectionGroup": "messages",
       "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "connectionRequests",
-      "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "reports",
-      "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "rateLimits",
-      "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "connections",
-      "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
-    },
-    {
-      "collectionGroup": "accountHolds",
-      "fieldPath": "deleteAt",
-      "ttl": true,
-      "indexes": []
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
     }
   ]
 }
