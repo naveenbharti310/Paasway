@@ -1,5 +1,5 @@
 import { waitUntil } from '@vercel/functions';
-import { handleCallable } from '../src/http/server';
+import { handleCallable, preflight, withCors } from '../src/http/server';
 import { maybeRunMaintenance } from '../src/services/cleanup';
 import { log } from '../src/lib/logger';
 
@@ -8,5 +8,9 @@ export async function POST(request: Request): Promise<Response> {
   const name = new URL(request.url).pathname.split('/').filter(Boolean).pop() ?? '';
   const response = await handleCallable(request, name);
   waitUntil(maybeRunMaintenance().catch((error) => log.error('Maintenance failed', { error: String(error) })));
-  return response;
+  return withCors(request, response);
+}
+
+export function OPTIONS(request: Request): Response {
+  return preflight(request);
 }

@@ -11,7 +11,8 @@
     "test:rules": "node --test test/firestore.rules.test.cjs",
     "test:rules:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules\"",
     "test:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules && npm run test:integration --prefix functions\"",
-    "check": "npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist"
+    "check": "npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist",
+    "preview:web": "sh scripts/web-preview.sh"
   },
   "dependencies": {
     "@react-native-firebase/app": "26.4.0",
@@ -29,15 +30,17 @@
     "expo-notifications": "~57.0.21",
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
+    "firebase": "^12.19.0",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0"
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "@types/react": "~19.2.18",
-    "firebase": "^12.19.0",
     "typescript": "~6.0.3"
   },
   "overrides": {

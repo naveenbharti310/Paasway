@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { errorMessage } from '../services/errors';
 import { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import { View, ActivityIndicator, Text, TouchableOpacity, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, signOut, type User } from '@react-native-firebase/auth';
@@ -59,7 +59,7 @@ export default function RootNavigator() {
         setStage(nextStage);
         setResumeConnectionId(resume);
         setCheckingAuth(false);
-        if (u) {
+        if (u && Platform.OS !== 'web') {
           const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
           void refreshPush();
           pushListener = Notifications.addPushTokenListener(() => void refreshPush());

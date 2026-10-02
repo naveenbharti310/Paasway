@@ -49,6 +49,7 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [safetyNotice, setSafetyNotice] = useState(false);
   const navigatedAway = useRef(false);
+  const list = useRef<FlatList<Message>>(null);
   const currentUserId = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
@@ -76,6 +77,15 @@ export default function ChatScreen() {
     }, (err) => setError(errorMessage(err, 'Could not load messages.')));
     return unsubscribe;
   }, [connectionId]);
+
+  // The back button or gesture would hide an open chat without ending it, so
+  // it opens the chat options instead.
+  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+    if (navigatedAway.current) return;
+    if (event.data.action.type !== 'GO_BACK' && event.data.action.type !== 'POP') return;
+    event.preventDefault();
+    setMenuVisible(true);
+  }), [navigation]);
 
   const otherIsA = connection ? connection.userA !== currentUserId : false;
   const otherName = connection ? (otherIsA ? connection.userAName : connection.userBName) : '';
@@ -159,7 +169,9 @@ export default function ChatScreen() {
       {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       {safetyNotice && <Text style={styles.notice}>Take your time before sharing contact details or moving to another app.</Text>}
       <FlatList
+        ref={list}
         data={messages}
+        onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
         keyExtractor={(item) => item.messageId}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
@@ -180,7 +192,7 @@ export default function ChatScreen() {
         }}
       />
       <View style={styles.inputRow}>
-        <TextInput testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" maxLength={2000} editable={!ending && !submitting && connection?.status === 'active'} />
+        <TextInput testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" maxLength={2000} onSubmitEditing={handleSend} submitBehavior="submit" editable={!ending && !submitting && connection?.status === 'active'} />
         <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message">
           <Text style={styles.sendGlyph}>{sending ? 'Sending' : 'Send'}</Text>
         </TouchableOpacity>

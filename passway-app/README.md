@@ -35,15 +35,25 @@ Passway is already set up on free plans. Nothing here costs money.
 | Firebase project | `passway-2ddc8` on the Spark plan, Firestore in Mumbai |
 | Server | `https://passway-api.vercel.app` on Vercel Hobby |
 | App builds | Expo project `@naveenbharti310s-team/passway` |
-| Test numbers | `+91 99999 00001` and `+91 99999 00002`, code `123456` |
+| Web preview | `https://passway-preview.vercel.app`, the same app running in a browser |
+| Test numbers | `+91 99999 00001`, `+91 99999 00002` and `+91 99999 00003`, code `123456` |
 
 To ship a change:
 
 1. Server: from `passway-app/functions`, run `npx vercel deploy --prod`.
 2. Rules and indexes: from `passway-app`, run `npx firebase-tools deploy --project passway-2ddc8 --only firestore:rules,firestore:indexes`.
 3. App: from `passway-app`, run `npx eas-cli build --platform android --profile preview`. Expo emails a link to install the new APK.
+4. Web preview: from `passway-app`, run `npm run preview:web`.
 
-Vercel holds `FIREBASE_SERVICE_ACCOUNT`, `CRON_SECRET`, `ENFORCE_APP_CHECK=false` and `MODERATION_PROVIDER=rules`. Expo holds `GOOGLE_SERVICES_JSON` as a secret file and a push key that can only send notifications. See the free hosting section in [architecture](../docs/architecture.md) for the limits of this setup.
+Vercel holds `FIREBASE_SERVICE_ACCOUNT`, `CRON_SECRET`, `ENFORCE_APP_CHECK=false`, `MODERATION_PROVIDER=rules` and `ALLOWED_ORIGINS=https://passway-preview.vercel.app`. Expo holds `GOOGLE_SERVICES_JSON` as a secret file and a push key that can only send notifications. See the free hosting section in [architecture](../docs/architecture.md) for the limits of this setup.
+
+### Web preview
+
+The web preview runs the same screens in a browser so the app can be tried on any phone, including an iPhone. `metro.config.js` swaps the native Firebase packages for the small files in `src/firebase/web`, which use the Firebase JavaScript SDK. Differences from the phone app:
+
+1. A reCAPTCHA check runs before the sign in code is sent. It is usually invisible.
+2. There are no push notifications.
+3. App Check is off. The server only accepts browser calls from the addresses in `ALLOWED_ORIGINS`.
 
 ## Firebase setup on a paid plan
 

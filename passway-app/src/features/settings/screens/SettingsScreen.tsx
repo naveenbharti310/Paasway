@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Text, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
 import { signOut } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
@@ -63,9 +63,16 @@ export default function SettingsScreen() {
   }
 
   function confirmDelete() {
+    const title = 'Delete your account?';
+    const body = 'Your profile and sign in are removed and any open chat is ended. Messages already sent are deleted on their normal schedule. This cannot be undone.';
+    // Alert buttons do nothing in a browser, so the web preview asks with confirm.
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${body}`)) void runDelete();
+      return;
+    }
     Alert.alert(
-      'Delete your account?',
-      'Your profile and sign in are removed and any open chat is ended. Messages already sent are deleted on their normal schedule. This cannot be undone.',
+      title,
+      body,
       [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() }],
     );
   }

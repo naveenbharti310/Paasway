@@ -72,3 +72,17 @@ test('App Check is required unless turned off', async () => {
     process.env.ENFORCE_APP_CHECK = 'false';
   }
 });
+
+test('only listed web origins may call from a browser', async () => {
+  const { preflight, withCors } = require('../lib/http/server');
+  process.env.ALLOWED_ORIGINS = 'https://preview.example';
+  const ask = (origin) => new Request('https://example.test/api/confirmAge', { method: 'OPTIONS', headers: { origin } });
+  assert.equal(preflight(ask('https://preview.example')).status, 204);
+  assert.equal(preflight(ask('https://preview.example')).headers.get('access-control-allow-origin'), 'https://preview.example');
+  assert.equal(preflight(ask('https://other.example')).status, 403);
+  const allowed = withCors(ask('https://preview.example'), new Response('{}'));
+  assert.equal(allowed.headers.get('access-control-allow-origin'), 'https://preview.example');
+  const denied = withCors(ask('https://other.example'), new Response('{}'));
+  assert.equal(denied.headers.get('access-control-allow-origin'), null);
+  delete process.env.ALLOWED_ORIGINS;
+});

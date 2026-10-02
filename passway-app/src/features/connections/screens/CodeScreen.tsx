@@ -57,6 +57,14 @@ export default function CodeScreen() {
     return unsubscribe;
   }, [tid, createdAt, navigation]);
 
+  // Going back with the system back button or gesture cancels the code, so it
+  // is never left active where nobody is watching for a request.
+  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+    if (event.data.action.type !== 'GO_BACK' && event.data.action.type !== 'POP') return;
+    event.preventDefault();
+    void handleCancel();
+  }), [navigation]);
+
   async function handleCancel() {
     if (canceling) return;
     setCanceling(true);

@@ -71,3 +71,36 @@ export async function handleCallable(request: Request, name: string): Promise<Re
     return failure(new HttpsError('internal', 'Something went wrong. Try again.'));
   }
 }
+
+// Browsers only allow the web preview to call this server when its address is
+// listed in ALLOWED_ORIGINS (comma separated). The phone app is not affected.
+function allowedOrigin(request: Request): string | undefined {
+  const origin = request.headers.get('origin');
+  if (!origin) return undefined;
+  const allowed = (process.env.ALLOWED_ORIGINS ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+  return allowed.includes(origin) ? origin : undefined;
+}
+
+export function withCors(request: Request, response: Response): Response {
+  const origin = allowedOrigin(request);
+  if (origin) {
+    response.headers.set('access-control-allow-origin', origin);
+    response.headers.set('vary', 'origin');
+  }
+  return response;
+}
+
+export function preflight(request: Request): Response {
+  const origin = allowedOrigin(request);
+  if (!origin) return new Response(null, { status: 403 });
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'access-control-allow-origin': origin,
+      'access-control-allow-methods': 'POST, OPTIONS',
+      'access-control-allow-headers': 'authorization, content-type, x-firebase-appcheck, x-firebase-gmpid, x-firebase-client, x-client-version',
+      'access-control-max-age': '3600',
+      vary: 'origin',
+    },
+  });
+}
