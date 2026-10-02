@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db } from '../../../firebase/config';
 
 // Called once right after a successful sign in. Firebase Auth already
 // holds the verified phone number, this Firestore doc is only for the

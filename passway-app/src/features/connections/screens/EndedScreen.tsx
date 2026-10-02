@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { colors } from '../theme/colors';
-import { RootStackParamList } from '../navigation/RootNavigator';
-import Button from '../components/Button';
-import IconBadge from '../components/IconBadge';
+import { colors } from '../../../theme/colors';
+import type { RootStackParamList } from '../../../navigation/types';
+import Button from '../../../components/Button';
+import IconBadge from '../../../components/IconBadge';
 
 type EndedRouteProp = RouteProp<RootStackParamList, 'Ended'>;
 

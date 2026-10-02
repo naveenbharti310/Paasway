@@ -1,0 +1,25 @@
+# Dependencies and generated files
+node_modules/
+.expo/
+dist/
+web-build/
+passway-app/functions/lib/
+coverage/
+*.tsbuildinfo
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.firebase/
+*service-account*.json
+*serviceAccount*.json
+*.pem
+*.key
+
+# Logs and editor files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

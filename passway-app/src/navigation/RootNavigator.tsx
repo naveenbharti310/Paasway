@@ -4,29 +4,18 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase/config';
-import { ensureUserDoc } from '../api/ensureUser';
-import { registerForPush } from '../api/registerForPush';
-import PhoneAuthScreen from '../screens/PhoneAuthScreen';
-import GenerateScreen from '../screens/GenerateScreen';
-import CodeScreen from '../screens/CodeScreen';
-import EnterCodeScreen from '../screens/EnterCodeScreen';
-import RequestScreen from '../screens/RequestScreen';
-import ChatScreen from '../screens/ChatScreen';
-import EndedScreen from '../screens/EndedScreen';
+import { ensureUserDoc } from '../features/auth/api/ensureUser';
+import { registerForPush } from '../services/notifications';
+import PhoneAuthScreen from '../features/auth/screens/PhoneAuthScreen';
+import GenerateScreen from '../features/connections/screens/GenerateScreen';
+import CodeScreen from '../features/connections/screens/CodeScreen';
+import EnterCodeScreen from '../features/connections/screens/EnterCodeScreen';
+import RequestScreen from '../features/connections/screens/RequestScreen';
+import ChatScreen from '../features/chat/screens/ChatScreen';
+import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 
-export type RootStackParamList = {
-  Generate: undefined;
-  Code: { tid: string; expiresAt: number };
-  EnterCode: undefined;
-  Request: { requestId: string; requesterName: string; requestedAt: number; tidCreatedAt: number };
-  Chat: { connectionId: string };
-  Ended: { reported?: boolean } | undefined;
-};
-
-export type AuthStackParamList = {
-  PhoneAuth: undefined;
-};
+import type { RootStackParamList, AuthStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();

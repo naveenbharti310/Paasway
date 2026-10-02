@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase/config';
-import { deactivateTid } from '../api/tid';
-import { colors } from '../theme/colors';
-import { RootStackParamList } from '../navigation/RootNavigator';
-import ScreenHeader from '../components/ScreenHeader';
-import Button from '../components/Button';
+import { db } from '../../../firebase/config';
+import { deactivateTid } from '../api/connections';
+import { colors } from '../../../theme/colors';
+import type { RootStackParamList } from '../../../navigation/types';
+import ScreenHeader from '../../../components/ScreenHeader';
+import Button from '../../../components/Button';
 
 type CodeRouteProp = RouteProp<RootStackParamList, 'Code'>;
 

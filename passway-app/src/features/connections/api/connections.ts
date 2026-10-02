@@ -1,12 +1,5 @@
-// Thin client wrappers around the callable Cloud Functions in
-// functions/src/index.ts. Screens should call these, not Firestore
-// directly, for anything that writes data, so every write goes through
-// the checks defined server side.
-
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { app } from '../firebase/config';
-
-const functions = getFunctions(app);
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../../firebase/config';
 
 export async function generateTid(lat: number, lng: number, displayName: string): Promise<{ tid: string; expiresAt: number }> {
   const call = httpsCallable(functions, 'generateTid');
@@ -31,18 +24,7 @@ export async function deactivateTid(tid: string): Promise<void> {
   await call({ tid });
 }
 
-export async function sendMessage(connectionId: string, content: string): Promise<{ flag: string; earlyContactShare: boolean }> {
-  const call = httpsCallable(functions, 'sendMessage');
-  const result = await call({ connectionId, content });
-  return result.data as { flag: string; earlyContactShare: boolean };
-}
-
 export async function endConnection(connectionId: string): Promise<void> {
   const call = httpsCallable(functions, 'endConnection');
   await call({ connectionId });
-}
-
-export async function fileReport(connectionId: string, reportedId: string, reason: string): Promise<void> {
-  const call = httpsCallable(functions, 'fileReport');
-  await call({ connectionId, reportedId, reason });
 }

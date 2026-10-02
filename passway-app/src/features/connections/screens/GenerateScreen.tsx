@@ -2,14 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { getAuth } from 'firebase/auth';
-import { app } from '../firebase/config';
-import { generateTid } from '../api/tid';
-import { getCurrentLocation } from '../api/location';
-import { getSavedName, saveDefaultName } from '../api/profile';
-import { colors } from '../theme/colors';
-import LabeledField from '../components/LabeledField';
-import Button from '../components/Button';
-import IconBadge from '../components/IconBadge';
+import { app } from '../../../firebase/config';
+import { generateTid } from '../api/connections';
+import { getCurrentLocation } from '../../../services/location';
+import { getSavedName, saveDefaultName } from '../../profile/api/profile';
+import { colors } from '../../../theme/colors';
+import LabeledField from '../../../components/LabeledField';
+import Button from '../../../components/Button';
+import IconBadge from '../../../components/IconBadge';
 
 export default function GenerateScreen() {
   const navigation = useNavigation<any>();

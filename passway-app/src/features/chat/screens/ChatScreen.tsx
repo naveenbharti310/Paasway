@@ -3,11 +3,13 @@ import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Keyboard
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, orderBy, onSnapshot, doc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { db, app } from '../firebase/config';
-import { sendMessage, endConnection, fileReport } from '../api/tid';
-import { colors } from '../theme/colors';
-import { RootStackParamList } from '../navigation/RootNavigator';
-import { Message, Connection } from '../types/models';
+import { db, app } from '../../../firebase/config';
+import { sendMessage } from '../api/messages';
+import { endConnection } from '../../connections/api/connections';
+import { fileReport } from '../../safety/api/reports';
+import { colors } from '../../../theme/colors';
+import type { RootStackParamList } from '../../../navigation/types';
+import { Message, Connection } from '../../../types/models';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 

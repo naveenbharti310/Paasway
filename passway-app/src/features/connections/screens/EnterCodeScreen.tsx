@@ -3,14 +3,14 @@ import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { db, app } from '../firebase/config';
-import { redeemTid } from '../api/tid';
-import { getCurrentLocation } from '../api/location';
-import { getSavedName, saveDefaultName } from '../api/profile';
-import { colors } from '../theme/colors';
-import ScreenHeader from '../components/ScreenHeader';
-import LabeledField from '../components/LabeledField';
-import Button from '../components/Button';
+import { db, app } from '../../../firebase/config';
+import { redeemTid } from '../api/connections';
+import { getCurrentLocation } from '../../../services/location';
+import { getSavedName, saveDefaultName } from '../../profile/api/profile';
+import { colors } from '../../../theme/colors';
+import ScreenHeader from '../../../components/ScreenHeader';
+import LabeledField from '../../../components/LabeledField';
+import Button from '../../../components/Button';
 
 export default function EnterCodeScreen() {
   const navigation = useNavigation<any>();

@@ -2,11 +2,11 @@ import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { auth, firebaseConfig } from '../firebase/config';
-import { colors } from '../theme/colors';
-import LabeledField from '../components/LabeledField';
-import Button from '../components/Button';
-import IconBadge from '../components/IconBadge';
+import { auth, firebaseConfig } from '../../../firebase/config';
+import { colors } from '../../../theme/colors';
+import LabeledField from '../../../components/LabeledField';
+import Button from '../../../components/Button';
+import IconBadge from '../../../components/IconBadge';
 
 // Phone auth on the Firebase JS SDK needs a reCAPTCHA challenge inside
 // React Native, expo-firebase-recaptcha supplies that as an invisible

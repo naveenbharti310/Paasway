@@ -1,5 +1,5 @@
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db } from '../../../firebase/config';
 
 // The saved default name pre-fills the field on Generate and EnterCode
 // so it is not retyped every time. It is not a page anyone else can
