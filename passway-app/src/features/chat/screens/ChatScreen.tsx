@@ -37,6 +37,16 @@ function timeOf(sentAt: number): string {
   return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
 }
 
+// "Today", "Yesterday" or a weekday, shown once above each day's messages.
+function dayOf(sentAt: number): string {
+  const d = new Date(sentAt);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (sentAt >= start) return 'Today';
+  if (sentAt >= start - 86400000) return 'Yesterday';
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()];
+}
+
 const REPORT_REASONS = [
   'Inappropriate messages',
   'Asked for money or gifts',
@@ -63,6 +73,8 @@ export default function ChatScreen() {
   const [actionFor, setActionFor] = useState<Message | null>(null);
   const [noteVisible, setNoteVisible] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
   const notes = useNotes(auth.currentUser?.uid ?? '');
   const note = notes[connectionId];
   const navigatedAway = useRef(false);
@@ -189,15 +201,15 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back to chats" testID="chat-back" style={styles.back}>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Back to chats" testID="chat-back" style={styles.back}>
           <Icon name="back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <Avatar name={otherName} seed={connectionId} size={40} />
-        <TouchableOpacity style={styles.headerText} onPress={() => { setNoteDraft(note ?? ''); setNoteVisible(true); }} accessibilityHint="Add a private note to remember who this is" testID="chat-title">
+        <TouchableOpacity style={styles.headerText} onPress={() => { setNoteDraft(note ?? ''); setNoteError(null); setNoteVisible(true); }} accessibilityRole="button" accessibilityLabel={`${otherName}${note ? `, ${note}` : ''}. Edit private note`} testID="chat-title">
           <Text style={styles.headerName} numberOfLines={1}>{otherName || 'Loading'}</Text>
           <Text style={note ? styles.headerNote : styles.headerSub} numberOfLines={1} testID="chat-note">{note || 'Add a private note'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" testID="chat-options" style={styles.menuButton} hitSlop={8}>
+        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="Chat options" testID="chat-options" style={styles.menuButton}>
           <View style={styles.dots}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View>
         </TouchableOpacity>
       </View>
@@ -209,12 +221,14 @@ export default function ChatScreen() {
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
         keyExtractor={(item) => item.messageId}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const mine = item.senderId === currentUserId;
+          const newDay = index === 0 || new Date(messages[index - 1].sentAt).toDateString() !== new Date(item.sentAt).toDateString();
           const warning = !mine ? WARNINGS[item.moderationFlag] : undefined;
           const quoted = item.replyTo ? byId.get(item.replyTo) : undefined;
           return (
             <View style={mine ? styles.rowMine : styles.rowTheirs}>
+              {newDay && <View style={styles.dayWrap}><Text style={styles.day} accessibilityRole="header">{dayOf(item.sentAt)}</Text></View>}
               <SwipeToReply onReply={() => { setReplyingTo(item); focusInput(); }}>
               <Pressable
                 onLongPress={() => setActionFor(item)}
@@ -263,7 +277,7 @@ export default function ChatScreen() {
         </View>
       )}
       <View style={styles.inputRow}>
-        <TextInput ref={input} testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} multiline maxLength={2000} onKeyPress={Platform.OS === 'web' ? (event) => {
+        <TextInput ref={input} testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} accessibilityLabel="Message" maxFontSizeMultiplier={1.5} placeholder="Message" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} multiline maxLength={2000} onKeyPress={Platform.OS === 'web' ? (event) => {
             // On a computer keyboard Enter sends and Shift+Enter starts a new line.
             const key = event.nativeEvent as unknown as { key: string; shiftKey?: boolean };
             if (key.key === 'Enter' && !key.shiftKey) { (event as unknown as { preventDefault: () => void }).preventDefault(); void handleSend(); }
@@ -280,12 +294,23 @@ export default function ChatScreen() {
             <View style={styles.grabber} />
             <Text style={styles.noteTitle}>{`A note about ${otherName}`}</Text>
             <Text style={styles.noteHelp}>Only you can see this. It helps you tell people with the same name apart.</Text>
-            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="For example: Metro, blue jacket" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} maxLength={40} style={styles.noteInput} testID="note-input" autoFocus />
-            <TouchableOpacity style={styles.sheetRow} testID="note-save" onPress={() => {
-              setNoteVisible(false);
-              void saveNote(currentUserId, connectionId, noteDraft).catch((err) => setError(errorMessage(err, 'Could not save the note. Try again.')));
+            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="For example: Metro, blue jacket" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} maxLength={40} style={styles.noteInput} testID="note-input" autoFocus autoCapitalize="sentences" returnKeyType="done" accessibilityLabel={`Private note about ${otherName}`} />
+            {noteError && <Text accessibilityRole="alert" style={styles.noteError}>{noteError}</Text>}
+            {/* Save is only offered when something changed. Remove only when a note exists. */}
+            <TouchableOpacity style={[styles.sheetRow, (noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) && styles.sheetRowOff]} testID="note-save" disabled={savingNote || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)} onPress={async () => {
+              // Wait for the save to finish so the note is never lost if the app closes straight away.
+              setSavingNote(true);
+              setNoteError(null);
+              try {
+                await saveNote(currentUserId, connectionId, noteDraft);
+                setNoteVisible(false);
+              } catch (err) {
+                setNoteError(errorMessage(err, 'Could not save the note. Try again.'));
+              } finally {
+                setSavingNote(false);
+              }
             }}>
-              <Text style={styles.sheetRowText}>{noteDraft.trim() ? 'Save note' : 'Remove note'}</Text>
+              {savingNote ? <ActivityIndicator color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={() => setNoteVisible(false)}>
               <Text style={styles.sheetRowMuted}>Cancel</Text>
@@ -369,7 +394,7 @@ const styles = StyleSheet.create({
   error: { fontSize: 13, color: colors.danger, paddingVertical: 8, paddingHorizontal: 16 },
   notice: { fontSize: 13, color: colors.gold, backgroundColor: colors.accentBg, marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 12, overflow: 'hidden', lineHeight: 18 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  menuButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  menuButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   dots: { flexDirection: 'row', gap: 3 },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textPrimary },
   list: { paddingVertical: 16, paddingHorizontal: 16, gap: 6, flexGrow: 1 },
@@ -378,7 +403,7 @@ const styles = StyleSheet.create({
   bubbleMine: { backgroundColor: colors.accentFill, alignSelf: 'flex-end', borderBottomRightRadius: 6 },
   bubbleTextTheirs: { fontSize: 16, lineHeight: 22, color: colors.textPrimary },
   bubbleTextMine: { fontSize: 16, lineHeight: 22, color: colors.onAccent },
-  time: { fontSize: 11, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 3 },
+  time: { fontSize: 12, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 3 },
   timeMine: { color: '#6B6B6B' },
   quote: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
   quoteTheirs: { borderLeftColor: colors.gold, backgroundColor: 'rgba(255,255,255,0.06)' },
@@ -396,15 +421,16 @@ const styles = StyleSheet.create({
   headerName: { fontSize: 17, fontWeight: '700', color: colors.textPrimary },
   headerNote: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   headerSub: { fontSize: 13, color: colors.gold, marginTop: 2 },
-  headerText: { flex: 1 },
-  back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  headerText: { flex: 1, minHeight: 44, justifyContent: 'center' },
+  back: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   backGlyph: { fontSize: 30, color: colors.textPrimary, lineHeight: 32, marginTop: -3 },
   noteSheet: { paddingHorizontal: 20, gap: 10 },
   noteTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginTop: 4 },
+  noteError: { fontSize: 13, color: colors.danger },
   noteHelp: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
-  noteInput: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg, borderRadius: 14, paddingHorizontal: 14, minHeight: 50, fontSize: 16, color: colors.textPrimary, marginVertical: 6 },
+  noteInput: { borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.bg, borderRadius: 14, paddingHorizontal: 14, minHeight: 50, fontSize: 16, color: colors.textPrimary, marginVertical: 6 },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 },
-  input: { flex: 1, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12, fontSize: 16, maxHeight: 140, color: colors.textPrimary },
+  input: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.fieldBorder, borderRadius: 22, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12, fontSize: 16, maxHeight: 140, color: colors.textPrimary },
   sendButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
   sendButtonOff: { backgroundColor: colors.surfaceRaised },
   sendGlyph: { fontSize: 20, color: colors.onAccent, fontWeight: '700' },
@@ -417,4 +443,7 @@ const styles = StyleSheet.create({
   sheetRowText: { fontSize: 16, color: colors.textPrimary, fontWeight: '500' },
   sheetRowDanger: { fontSize: 16, color: colors.danger, fontWeight: '600' },
   sheetRowMuted: { fontSize: 16, color: colors.textSecondary },
+  sheetRowOff: { opacity: 0.4 },
+  dayWrap: { alignSelf: 'stretch', alignItems: 'center', marginVertical: 10 },
+  day: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' },
 });

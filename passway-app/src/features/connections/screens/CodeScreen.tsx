@@ -90,7 +90,7 @@ export default function CodeScreen() {
         <Text style={styles.helper}>Show this to the person you just met</Text>
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>ONE TIME CODE</Text>
-          <Text style={styles.codeText} testID="code-text" selectable={false}>{tid}</Text>
+          <Text style={styles.codeText} testID="code-text" selectable={false} maxFontSizeMultiplier={1} accessibilityLabel={`Your code is ${tid.split('').join(' ')}`}>{tid}</Text>
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${Math.max(0, Math.min(1, secondsLeft / Math.max(1, (expiresAt - createdAt) / 1000))) * 100}%` }, urgent && styles.fillUrgent]} />
           </View>
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
   bottom: { paddingBottom: 16 },
   codeCard: { width: '100%', backgroundColor: colors.surface, borderRadius: 28, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: '#2A2418' },
-  codeLabel: { fontSize: 11, color: colors.textMuted, marginBottom: 12, letterSpacing: 2, fontWeight: '600' },
+  codeLabel: { fontSize: 12, color: colors.textMuted, marginBottom: 12, letterSpacing: 2, fontWeight: '600' },
   codeText: { fontSize: 60, fontWeight: '700', letterSpacing: 14, color: colors.gold, paddingLeft: 14 },
   track: { width: '100%', height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 24, overflow: 'hidden' },
   fill: { height: 4, borderRadius: 2, backgroundColor: colors.gold },

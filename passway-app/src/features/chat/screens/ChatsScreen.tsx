@@ -35,7 +35,7 @@ export default function ChatsScreen() {
           large
           showBack={navigation.canGoBack()}
           right={(
-            <TouchableOpacity onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel="Settings" testID="chats-settings">
+            <TouchableOpacity onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel="Settings" testID="chats-settings" style={styles.hit}>
               <Text style={styles.pill}>Settings</Text>
             </TouchableOpacity>
           )}
@@ -93,6 +93,7 @@ const styles = StyleSheet.create({
   loading: { marginTop: 40 },
   list: { paddingHorizontal: 24, paddingVertical: 8, flexGrow: 1 },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 68 },
+  hit: { minHeight: 44, justifyContent: 'center' },
   pill: { fontSize: 14, color: colors.textSecondary, fontWeight: '500', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface, borderRadius: 999, overflow: 'hidden' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 40 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },

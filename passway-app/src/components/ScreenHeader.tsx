@@ -32,9 +32,9 @@ export default function ScreenHeader({ title, showBack, right, large }: Props) {
 
 const styles = StyleSheet.create({
   wrap: { marginBottom: 8 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 40 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   left: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  backCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  backCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   backGlyph: { fontSize: 24, color: colors.textPrimary, lineHeight: 26, marginTop: -2 },
   title: { fontSize: 17, color: colors.textPrimary, fontWeight: '600' },
   largeTitle: { fontSize: 32, fontWeight: '700', color: colors.textPrimary, letterSpacing: -0.5, marginTop: 12 },

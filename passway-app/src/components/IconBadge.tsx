@@ -11,7 +11,7 @@ interface Props {
 export default function IconBadge({ icon, tone = 'accent' }: Props) {
   const accent = tone === 'accent';
   return (
-    <View style={[styles.ring, accent ? styles.ringAccent : styles.ringNeutral]}>
+    <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={[styles.ring, accent ? styles.ringAccent : styles.ringNeutral]}>
       <View style={[styles.badge, accent ? styles.accent : styles.neutral]}>
         <Icon name={icon} size={28} color={accent ? colors.gold : colors.textSecondary} />
       </View>

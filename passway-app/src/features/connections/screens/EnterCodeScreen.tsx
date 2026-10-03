@@ -10,6 +10,7 @@ import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
 import { colors } from '../../../theme/colors';
 import ScreenHeader from '../../../components/ScreenHeader';
+import FormScreen from '../../../components/FormScreen';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 
@@ -32,10 +33,30 @@ export default function EnterCodeScreen() {
   }, [uid]);
 
   function updateDigit(index: number, value: string) {
+    const clean = value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     const next = [...digits];
-    next[index] = value.replace(/[^A-Za-z0-9]/g, '').slice(-1).toUpperCase();
+    if (clean.length > 1) {
+      // A pasted code fills the boxes from this one onwards.
+      const chars = clean.length >= 4 ? clean.slice(0, 4).split('') : clean.split('');
+      const start = clean.length >= 4 ? 0 : index;
+      chars.forEach((char, i) => { if (start + i < 4) next[start + i] = char; });
+      setDigits(next);
+      inputs.current[Math.min(3, start + chars.length)]?.focus();
+      return;
+    }
+    next[index] = clean;
     setDigits(next);
-    if (value && index < 3) inputs.current[index + 1]?.focus();
+    if (clean && index < 3) inputs.current[index + 1]?.focus();
+  }
+
+  function handleKey(index: number, key: string) {
+    // Backspace on an empty box goes back to the previous one.
+    if (key === 'Backspace' && !digits[index] && index > 0) {
+      const next = [...digits];
+      next[index - 1] = '';
+      setDigits(next);
+      inputs.current[index - 1]?.focus();
+    }
   }
 
   async function handleConnect() {
@@ -113,9 +134,7 @@ export default function EnterCodeScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <ScreenHeader title="Enter code" showBack />
-      <View style={styles.center}>
+    <FormScreen header={<ScreenHeader title="Enter code" showBack />}>
         <Text style={styles.title} accessibilityRole="header">Enter their code</Text>
         <Text style={styles.helper}>Type the 4 characters shown on their screen.</Text>
         <View style={styles.otpRow}>
@@ -125,20 +144,23 @@ export default function EnterCodeScreen() {
               testID={`code-box-${index}`}
               ref={(ref) => { inputs.current[index] = ref; }}
               style={[styles.otpBox, digit ? styles.otpBoxFilled : undefined]}
-              maxLength={1}
+              maxLength={index === 0 ? 4 : 1}
               value={digit}
               onChangeText={(value) => updateDigit(index, value)}
+              onKeyPress={(e) => handleKey(index, e.nativeEvent.key)}
+              autoCorrect={false}
+              autoComplete="off"
+              maxFontSizeMultiplier={1.2}
               autoCapitalize="characters"
               selectionColor={colors.gold}
               accessibilityLabel={`Character ${index + 1} of 4`}
             />
           ))}
         </View>
-        <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} testID="name-input" />
-        {error && <Text style={styles.error}>{error}</Text>}
+        <LabeledField label="your name" placeholder="Your first name" value={name} onChangeText={setName} maxLength={30} autoCapitalize="words" autoCorrect={false} textContentType="givenName" autoComplete="name-given" returnKeyType="go" onSubmitEditing={handleConnect} testID="name-input" />
+        {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         <Button label="Connect" onPress={handleConnect} loading={loading} testID="connect" />
-      </View>
-    </View>
+    </FormScreen>
   );
 }
 
@@ -149,7 +171,7 @@ const styles = StyleSheet.create({
   helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 290, lineHeight: 22, marginBottom: 6 },
   pulse: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   otpRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  otpBox: { width: 60, height: 70, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: '700', color: colors.textPrimary },
+  otpBox: { width: 60, height: 70, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: '700', color: colors.textPrimary },
   otpBoxFilled: { borderColor: colors.gold, color: colors.gold },
   error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
 });

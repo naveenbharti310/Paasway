@@ -17,6 +17,8 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   backgroundColor: '#000000',
+  icon: './assets/icon.png',
+  web: { favicon: './assets/favicon.png' },
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.passway.app',
@@ -27,6 +29,7 @@ const config: ExpoConfig = {
     package: 'com.passway.app',
     googleServicesFile: googleServicesJson,
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
+    adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#000000' },
   },
   plugins: [
     '@react-native-firebase/app',
@@ -36,6 +39,8 @@ const config: ExpoConfig = {
     ['expo-location', { locationWhenInUsePermission: 'Passway checks that you are near the person you are connecting with. Your exact location is never shared.' }],
     'expo-notifications',
     './plugins/withFirebaseNoSpm',
+    ['expo-splash-screen', { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 96 }],
+    ['expo-system-ui'],
   ],
   extra: { eas: { projectId: easProjectId } },
 };

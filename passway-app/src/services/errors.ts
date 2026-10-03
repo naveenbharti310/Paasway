@@ -34,6 +34,9 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (raw.startsWith('functions/') && !TRANSPORT.has(code) && error instanceof Error && error.message) return clean(error.message);
   if (MESSAGES[code]) return MESSAGES[code];
   if (code === 'internal' || code === 'unknown') return fallback;
-  if (error instanceof Error && error.message) return clean(error.message);
+  // Other Firebase codes come with technical text such as
+  // "Firebase: Error (auth/missing-project-id)". Never show that to people.
+  if (raw) return 'Something went wrong. Try again.';
+  if (error instanceof Error && error.message && !/firebase|\(auth\/|\(firestore\//i.test(error.message)) return clean(error.message);
   return fallback;
 }

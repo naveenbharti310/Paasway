@@ -28,7 +28,7 @@ export default function Button({ label, onPress, variant = 'primary', loading, d
       {loading ? (
         <ActivityIndicator color={isPrimary ? colors.onAccent : colors.textPrimary} />
       ) : (
-        <Text style={[styles.text, isPrimary && styles.textPrimary, variant === 'danger' && styles.textDanger, variant === 'ghost' && styles.textGhost]}>{label}</Text>
+        <Text maxFontSizeMultiplier={1.4} style={[styles.text, isPrimary && styles.textPrimary, variant === 'danger' && styles.textDanger, variant === 'ghost' && styles.textGhost]}>{label}</Text>
       )}
     </Pressable>
   );

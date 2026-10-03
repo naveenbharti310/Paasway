@@ -1,6 +1,7 @@
 import { errorMessage } from '../../../services/errors';
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import FormScreen from '../../../components/FormScreen';
 import { signInWithPhoneNumber, type ConfirmationResult } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
 import { colors } from '../../../theme/colors';
@@ -56,9 +57,7 @@ export default function PhoneAuthScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Brand />
-      <View style={styles.center}>
+    <FormScreen header={<View style={styles.top}><Brand /></View>}>
         <IconBadge icon="phone" />
         {!confirmation ? (
           <>
@@ -67,34 +66,29 @@ export default function PhoneAuthScreen() {
             {process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
               <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use +91 99999 00001 or +91 99999 00002 with the code 123456.'}</Text>
             )}
-            <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" testID="phone-input" value={phone} onChangeText={setPhone} />
-            {error && <Text style={styles.error}>{error}</Text>}
+            <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
+            {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
           </>
         ) : (
           <>
             <Text style={styles.title} accessibilityRole="header">Enter the code</Text>
-            <Text style={styles.helper}>{`We sent a 6 digit code to ${phone}`}</Text>
-            <LabeledField label="verification code" placeholder="123456" keyboardType="number-pad" testID="verify-input" value={code} onChangeText={setCode} maxLength={6} />
-            {error && <Text style={styles.error}>{error}</Text>}
+            <Text style={styles.helper}>{`We sent a 6 digit code to ${phone.trim()}`}</Text>
+            <LabeledField label="verification code" placeholder="123456" keyboardType="number-pad" textContentType="oneTimeCode" autoComplete="sms-otp" returnKeyType="done" onSubmitEditing={handleVerifyCode} testID="verify-input" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, ''))} maxLength={6} />
+            {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Verify" onPress={handleVerifyCode} loading={loading} testID="verify" />
             <Button label="Send another code" variant="secondary" onPress={handleSendCode} disabled={loading} />
-            <TouchableOpacity disabled={loading} onPress={() => { setConfirmation(null); setCode(''); setError(null); }} accessibilityRole="button">
-              <Text style={styles.link}>Use another number</Text>
-            </TouchableOpacity>
+            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { setConfirmation(null); setCode(''); setError(null); }} />
           </>
         )}
-      </View>
-    </View>
+    </FormScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingBottom: 40 },
+  top: { minHeight: 44, justifyContent: 'center' },
   title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
   helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22, marginBottom: 8 },
   hint: { fontSize: 13, color: colors.gold, textAlign: 'center', maxWidth: 300, lineHeight: 19, backgroundColor: colors.accentBg, padding: 12, borderRadius: 12, overflow: 'hidden' },
-  link: { fontSize: 15, color: colors.textSecondary, fontWeight: '500', paddingVertical: 8 },
   error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
 });

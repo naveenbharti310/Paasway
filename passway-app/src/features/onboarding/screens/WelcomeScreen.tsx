@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, PanResponder } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../../theme/colors';
@@ -20,18 +20,28 @@ export default function WelcomeScreen() {
   const [index, setIndex] = useState(0);
   const page = PAGES[index];
   const last = index === PAGES.length - 1;
+  // Swipe left or right to move between pages, like most onboarding screens.
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const swipe = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 20 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
+    onPanResponderRelease: (_e, g) => {
+      if (g.dx < -50) setIndex(Math.min(PAGES.length - 1, indexRef.current + 1));
+      else if (g.dx > 50) setIndex(Math.max(0, indexRef.current - 1));
+    },
+  })).current;
 
   return (
     <View style={styles.container}>
       <View style={styles.top}>
         <Brand />
         {!last && (
-          <TouchableOpacity onPress={() => setIndex(PAGES.length - 1)} accessibilityRole="button" testID="welcome-skip">
+          <TouchableOpacity onPress={() => setIndex(PAGES.length - 1)} accessibilityRole="button" testID="welcome-skip" style={styles.skipButton}>
             <Text style={styles.skip}>Skip</Text>
           </TouchableOpacity>
         )}
       </View>
-      <View style={styles.center}>
+      <View style={styles.center} {...swipe.panHandlers}>
         <IconBadge icon={page.icon} />
         <Text style={styles.title} accessibilityRole="header">{page.title}</Text>
         <Text style={styles.body}>{page.body}</Text>
@@ -50,7 +60,8 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 40 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44 },
+  skipButton: { minWidth: 44, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
   skip: { fontSize: 15, color: colors.textSecondary, fontWeight: '500' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   title: { fontSize: 28, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', maxWidth: 320, letterSpacing: -0.5, lineHeight: 34 },
