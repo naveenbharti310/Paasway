@@ -34,6 +34,7 @@ const config: ExpoConfig = {
     ['expo-build-properties', { ios: { useFrameworks: 'static' } }],
     ['expo-location', { locationWhenInUsePermission: 'Passway checks that you are near the person you are connecting with. Your exact location is never shared.' }],
     'expo-notifications',
+    './plugins/withFirebaseNoSpm',
   ],
   extra: { eas: { projectId: easProjectId } },
 };
