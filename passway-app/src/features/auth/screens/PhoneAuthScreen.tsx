@@ -13,6 +13,15 @@ import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 import Brand from '../../../components/Brand';
 
+// Passway is only open to Indian numbers for now. Accepts 98765 43210,
+// 098765 43210 or +91 98765 43210 and returns +919876543210.
+export function indianNumber(input: string): string | null {
+  let digits = input.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  return /^[6-9]\d{9}$/.test(digits) ? `+91${digits}` : null;
+}
+
 export default function PhoneAuthScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [phone, setPhone] = useState('');
@@ -23,8 +32,9 @@ export default function PhoneAuthScreen() {
 
   async function handleSendCode() {
     if (loading) return;
-    if (!/^\+[1-9]\d{7,14}$/.test(phone.replace(/\s/g, ''))) {
-      setError('Enter a phone number, with country code');
+    const number = indianNumber(phone);
+    if (!number) {
+      setError('Enter a 10 digit Indian mobile number');
       return;
     }
     setLoading(true);
@@ -32,7 +42,7 @@ export default function PhoneAuthScreen() {
     try {
       // The native SDK verifies the device with Play Integrity or silent APNs
       // and falls back to a reCAPTCHA page only when that is not possible.
-      const result = await signInWithPhoneNumber(auth, phone.replace(/\s/g, ''));
+      const result = await signInWithPhoneNumber(auth, number);
       setConfirmation(result);
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not send a code. Check the number and try again.'));
@@ -68,9 +78,9 @@ export default function PhoneAuthScreen() {
             <Text style={styles.title} accessibilityRole="header">Your phone number</Text>
             <Text style={styles.helper}>Used only to sign in. It is never shown to anyone you connect with.</Text>
             {process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
-              <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use +91 99999 00001 or +91 99999 00002 with the code 123456.'}</Text>
+              <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use 99999 00001 or 99999 00002 with the code 123456.'}</Text>
             )}
-            <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
+            <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
             <Text style={styles.notice}>Passway is for people aged 18 and over.</Text>

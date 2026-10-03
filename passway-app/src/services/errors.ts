@@ -13,7 +13,7 @@ const MESSAGES: Record<string, string> = {
   'permission-denied': 'This action is not available for your account.',
   unauthenticated: 'Your session has ended. Sign in again.',
   // Firebase only sends real text messages on a paid plan.
-  'billing-not-enabled': 'Sign in by text message is not switched on yet. For now, use a test number such as +91 99999 00001 with the code 123456.',
+  'billing-not-enabled': 'Sign in by text message is not switched on yet. For now, use a test number such as 99999 00001 with the code 123456.',
 };
 
 export function errorCode(error: unknown): string {
