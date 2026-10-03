@@ -103,7 +103,7 @@ See [architecture](../docs/architecture.md) and [code organisation](../docs/code
 1. A code lasts five minutes and can be claimed once.
 2. Proximity uses a geohash of precision 7 plus the eight neighbouring cells. Raw coordinates are never stored.
 3. Generation is limited to ten per hour, redemption attempts to fifteen per hour, messages to sixty per minute and reports or blocks to twenty per hour.
-4. Every message expires 72 hours after it is sent. Ending a conversation keeps messages for 72 hours from the end. A report holds the conversation for 30 days.
+4. Every message expires 72 hours after it is sent. Ending a conversation keeps messages for 72 hours from the end. A report holds the conversation for 90 days (3 months).
 5. Connections with no messages for 72 hours are closed by an hourly job.
 6. Reporting or blocking prevents the two people from connecting again. Neither person is told about a block.
 7. A report marks the other account for review. It does not ban automatically, and an existing ban is never lowered.

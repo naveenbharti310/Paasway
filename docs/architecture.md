@@ -32,7 +32,7 @@ Global options in `functions/src/config.ts` set the region, an instance ceiling 
 | Chat | `sendMessage` | The connection is active and both people are in good standing at the moment of writing. Each message gets its own 72 hour expiry |
 | End | `endConnection` | Idempotent. Keeps the first end time and never shortens a longer hold |
 | Block | `blockUser` | Ends the connection and stops either person redeeming the other's codes in future |
-| Report | `fileReport` | Ends the connection, blocks the reported person, flags their account for review and holds the conversation for 30 days. Repeated reports by the same person do nothing extra |
+| Report | `fileReport` | Ends the connection, blocks the reported person, flags their account for review and holds the conversation for 90 days (3 months). Repeated reports by the same person do nothing extra |
 | Idle close | `closeIdleConnectionsJob` | Runs hourly and ends connections with no messages for 72 hours |
 | Retention repair | `syncConnectionRetention` | Reapplies message retention if an end, block or report is interrupted |
 
@@ -45,7 +45,7 @@ Global options in `functions/src/config.ts` set the region, an instance ceiling 
 | `connectionRequests/{id}` | Functions | The two participants | Cleanup sweep after 72 hours |
 | `connections/{id}` | Functions | The two participants | Cleanup sweep after the retention date set when it ends |
 | `connections/{id}/messages/{id}` | Functions | The two participants | Cleanup sweep 72 hours after sending, extended to the connection's hold when it ends or is reported |
-| `reports/{id}` | Functions | Never | Cleanup sweep after 30 days |
+| `reports/{id}` | Functions | Never | Cleanup sweep after 90 days |
 | `blocks/{blocker}:{blocked}` | Functions | Never | Kept |
 | `rateLimits/{uid}_{name}` | Functions | Never | After the window, or when the account is deleted |
 | `system/maintenance` | Functions | Never | Kept. Records when the cleanup sweep last ran |
