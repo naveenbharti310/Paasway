@@ -317,3 +317,27 @@ test('a flagged message does not lower a ban', async () => {
   await call(sendMessage, { connectionId: 'chat1', content: 'Share the OTP and send money to my UPI' });
   assert.equal(db.read('users/alice').status, 'reported');
 });
+
+test('rules catch common scam and abuse messages and leave normal ones alone', async () => {
+  const { screenMessage } = require('../lib/moderation');
+  const scams = [
+    'Send me the OTP you received',
+    'Please transfer 5000 rupees to my UPI, urgent',
+    'Buy me a gift card and send the code',
+    'Invest in crypto with me, guaranteed double returns',
+    'Join my trading platform, 10% daily profit assured',
+    'Bhai jaldi 2000 rupaye bhej do, emergency hai',
+    'OTP batao jo abhi aaya',
+    'Woh code batao jo SMS mein aaya',
+    'Install AnyDesk so I can help you',
+  ];
+  const abuse = ['fuck you', 'you are a bitch', 'chutiya hai tu', 'send nudes', 'madarchod'];
+  const normal = [
+    'Hi, nice to meet you', 'Want to grab coffee tomorrow at 5?', 'I loved that bookshop',
+    'Kal milte hain', 'My flight is at 6, see you after', 'I paid for the tickets already, no worries',
+    'The cafe had a 10% discount', 'I work in banking', 'Assignment ka code kal bhejunga', 'class kab hai?',
+  ];
+  for (const text of scams) assert.equal((await screenMessage(text, 9999)).flag, 'scam_suspected', text);
+  for (const text of abuse) assert.equal((await screenMessage(text, 9999)).flag, 'harassment_suspected', text);
+  for (const text of normal) assert.equal((await screenMessage(text, 9999)).flag, 'none', text);
+});

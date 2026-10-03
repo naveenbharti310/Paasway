@@ -33,8 +33,12 @@ const SCAM_RULES: ScamRule[] = [
   { name: 'payment_request', weight: 1, pattern: /\b(?:send|transfer|pay|lend|loan|deposit|wire)\b.{0,30}\b(?:money|cash|rs\.?|rupees?|inr|usd|dollars?|upi|paytm|g\s?pay|phone\s?pe|bank|account|amount)\b/i },
   { name: 'currency_amount', weight: 1, pattern: /(?:₹|\$|€|£|\brs\.?\s?|\binr\s?)\s?\d[\d,]*|\b\d[\d,]*\s?(?:rupees|dollars|lakh|crore|k\b)/i },
   { name: 'investment', weight: 1, pattern: /\b(?:bitcoin|btc|crypto|usdt|ethereum|forex|trading (?:app|platform|account)|invest(?:ment|ing)?|guaranteed (?:returns?|profit)|double your|daily profit|passive income)\b/i },
+  { name: 'returns_promise', weight: 1, pattern: /\b(?:guaranteed|assured|fixed|sure ?shot)\b.{0,25}\b(?:returns?|profits?|income)\b|\bdouble (?:your |the )?(?:money|investment|amount)\b|\b\d{1,3}\s?% (?:daily|weekly|monthly|returns?|profit)/i },
+  // Common Hindi and Hinglish wording for asking for money or codes.
+  { name: 'payment_request_hi', weight: 1, pattern: /\b(?:paise|paisa|paisay|rupaye|rupay|rupees)\b.{0,20}\b(?:bhejo|bhej do|bhejdo|transfer|chahiye|de do|dedo|udhaar|udhar)\b|\b(?:bhejo|bhej do|transfer karo|transfer kar do)\b.{0,20}\b(?:paise|paisa|upi|paytm|account)\b/i },
+  { name: 'one_time_code_hi', weight: 2, pattern: /\b(?:code|pin|password)\b.{0,15}\b(?:batao|bata do|bhejo|bhej do|share karo)\b/i },
   { name: 'gift_card', weight: 2, pattern: /\b(?:gift ?cards?|google play cards?|itunes cards?|amazon (?:pay )?vouchers?|steam cards?)\b/i },
-  { name: 'urgency', weight: 1, pattern: /\b(?:urgent(?:ly)?|emergency|right now|immediately|hospital|stuck at|customs|arrested|police case|account (?:blocked|suspended))\b/i },
+  { name: 'urgency', weight: 1, pattern: /\b(?:urgent(?:ly)?|emergency|right now|immediately|hospital|stuck at|customs|arrested|police case|account (?:blocked|suspended)|jaldi|abhi ke abhi)\b/i },
   { name: 'link', weight: 1, pattern: /\bhttps?:\/\/\S+|\bwww\.\S+|\b(?:bit\.ly|tinyurl\.com|t\.ly|cutt\.ly)\/\S+/i },
   { name: 'remote_access', weight: 2, pattern: /\b(?:anydesk|teamviewer|quick ?support|screen ?share)\b/i },
 ];
@@ -42,6 +46,14 @@ const SCAM_RULES: ScamRule[] = [
 export function scamSignals(content: string): { score: number; matched: string[] } {
   const matched = SCAM_RULES.filter((rule) => rule.pattern.test(content));
   return { score: matched.reduce((sum, rule) => sum + rule.weight, 0), matched: matched.map((rule) => rule.name) };
+}
+
+// Strong abuse in English and Hindi. This is a fallback for when the Google
+// classifier is off, so it only lists words that are almost never friendly.
+const ABUSE_PATTERN = /\b(?:f+u+c+k+\s*(?:you|u|off)|bitch|slut|whore|cunt|retard|kill (?:you|u)|rape|send (?:me )?nudes?|nude (?:pics?|photos?)|madar ?chod|maa?der ?chod|behen ?chod|bhen ?chod|bc mc|chutiya|chutiye|randi|bhosdi\w*|bhosda|gaand\w*|harami|haramzad\w*)\b/i;
+
+export function abusive(content: string): boolean {
+  return ABUSE_PATTERN.test(content);
 }
 
 export interface ClassifierCategory { name: string; confidence: number }
@@ -89,8 +101,8 @@ export async function screenMessage(content: string, connectionAgeSeconds: numbe
   const earlyContactShare = connectionAgeSeconds < EARLY_CONNECTION_WINDOW_SECONDS && mentionsContactInfo(content);
   let { score } = scamSignals(content);
   if (earlyContactShare) score += 1;
-  let harassment = false;
-  if (moderationDeps.provider() === 'google') {
+  let harassment = abusive(content);
+  if (!harassment && moderationDeps.provider() === 'google') {
     try {
       const categories = await moderationDeps.classify(content);
       harassment = categories.some((c) => c.confidence >= (HARASSMENT_THRESHOLDS[c.name] ?? Infinity));
