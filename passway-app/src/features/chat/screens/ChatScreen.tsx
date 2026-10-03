@@ -1,6 +1,6 @@
 import { errorMessage } from '../../../services/errors';
 import { useEffect, useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, orderBy, onSnapshot, doc, limitToLast } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
@@ -11,7 +11,9 @@ import { colors } from '../../../theme/colors';
 import type { RootStackParamList, RootNavigationProp, EndOutcome } from '../../../navigation/types';
 import { Message, Connection } from '../../../types/models';
 import SwipeToReply from '../components/SwipeToReply';
-import { chatColor } from '../identity';
+import Avatar from '../../../components/Avatar';
+import Icon from '../../../components/Icon';
+import { tap } from '../../../services/haptics';
 import { saveNote, useNotes } from '../api/chats';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -124,6 +126,7 @@ export default function ChatScreen() {
   async function handleSend() {
     const text = draft.trim();
     if (!text || sending || ending || submitting || connection?.status !== 'active') return;
+    tap();
     setSending(true);
     setError(null);
     try {
@@ -187,17 +190,15 @@ export default function ChatScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back to chats" testID="chat-back" style={styles.back}>
-          <Text style={styles.backGlyph}>{'\u2039'}</Text>
+          <Icon name="back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
-        <View style={[styles.avatar, { backgroundColor: chatColor(connectionId) }]}>
-          <Text style={styles.avatarText}>{(otherName || '?').charAt(0).toUpperCase()}</Text>
-        </View>
+        <Avatar name={otherName} seed={connectionId} size={40} />
         <TouchableOpacity style={styles.headerText} onPress={() => { setNoteDraft(note ?? ''); setNoteVisible(true); }} accessibilityHint="Add a private note to remember who this is" testID="chat-title">
           <Text style={styles.headerName} numberOfLines={1}>{otherName || 'Loading'}</Text>
           <Text style={note ? styles.headerNote : styles.headerSub} numberOfLines={1} testID="chat-note">{note || 'Add a private note'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" testID="chat-options">
-          <Text style={styles.menuGlyph}>&#8942;</Text>
+        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" testID="chat-options" style={styles.menuButton} hitSlop={8}>
+          <View style={styles.dots}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View>
         </TouchableOpacity>
       </View>
       {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -241,7 +242,14 @@ export default function ChatScreen() {
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={styles.empty}>{'Say hello. Messages disappear 72 hours after they are sent.\n\nTip: tap the name at the top to add a private note, like "from the gym", so you know who this is.'}</Text>}
+        ListEmptyComponent={(
+          <View style={styles.emptyWrap}>
+            <Avatar name={otherName} seed={connectionId} size={72} />
+            <Text style={styles.emptyName}>{otherName}</Text>
+            <Text style={styles.empty}>{'Say hello. Messages disappear 72 hours after they are sent.'}</Text>
+            <Text style={styles.emptyTip}>Tap the name at the top to add a private note only you can see.</Text>
+          </View>
+        )}
       />
       {replyingTo && (
         <View style={styles.replyBar} testID="reply-bar">
@@ -250,28 +258,29 @@ export default function ChatScreen() {
             <Text style={styles.quoteText} numberOfLines={1}>{replyingTo.content}</Text>
           </View>
           <TouchableOpacity onPress={() => { setReplyingTo(null); focusInput(); }} accessibilityLabel="Cancel reply" testID="cancel-reply">
-            <Text style={styles.replyClose}>{'\u2715'}</Text>
+            <View style={styles.replyClose}><Icon name="close" size={18} color={colors.textSecondary} /></View>
           </TouchableOpacity>
         </View>
       )}
       <View style={styles.inputRow}>
-        <TextInput ref={input} testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" multiline maxLength={2000} onKeyPress={Platform.OS === 'web' ? (event) => {
+        <TextInput ref={input} testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} multiline maxLength={2000} onKeyPress={Platform.OS === 'web' ? (event) => {
             // On a computer keyboard Enter sends and Shift+Enter starts a new line.
             const key = event.nativeEvent as unknown as { key: string; shiftKey?: boolean };
             if (key.key === 'Enter' && !key.shiftKey) { (event as unknown as { preventDefault: () => void }).preventDefault(); void handleSend(); }
           } : undefined} editable={!ending && !submitting && connection?.status === 'active'} />
         <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message"
-          style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonOff]}>
-          <Text style={styles.sendGlyph}>{sending ? '\u2026' : '\u2191'}</Text>
+          style={[styles.sendButton, !draft.trim() && !sending && styles.sendButtonOff]}>
+          {sending ? <ActivityIndicator color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
         </TouchableOpacity>
       </View>
 
       <Modal transparent visible={noteVisible} animationType="fade" onRequestClose={() => setNoteVisible(false)}>
         <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={[styles.sheet, styles.noteSheet]}>
+            <View style={styles.grabber} />
             <Text style={styles.noteTitle}>{`A note about ${otherName}`}</Text>
             <Text style={styles.noteHelp}>Only you can see this. It helps you tell people with the same name apart.</Text>
-            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="For example: Metro, blue jacket" maxLength={40} style={styles.noteInput} testID="note-input" autoFocus />
+            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="For example: Metro, blue jacket" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} maxLength={40} style={styles.noteInput} testID="note-input" autoFocus />
             <TouchableOpacity style={styles.sheetRow} testID="note-save" onPress={() => {
               setNoteVisible(false);
               void saveNote(currentUserId, connectionId, noteDraft).catch((err) => setError(errorMessage(err, 'Could not save the note. Try again.')));
@@ -288,6 +297,7 @@ export default function ChatScreen() {
       <Modal transparent visible={!!actionFor} animationType="fade" onRequestClose={() => setActionFor(null)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setActionFor(null)}>
           <View style={styles.sheet}>
+            <View style={styles.grabber} />
             <Text style={styles.sheetTitle} numberOfLines={2}>{actionFor?.content}</Text>
             <TouchableOpacity style={styles.sheetRow} testID="reply-action" onPress={() => { setReplyingTo(actionFor); setActionFor(null); focusInput(); }}>
               <Text style={styles.sheetRowText}>Reply</Text>
@@ -307,6 +317,7 @@ export default function ChatScreen() {
       <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View style={styles.sheet}>
+            <View style={styles.grabber} />
             <TouchableOpacity
               style={styles.sheetRow}
               onPress={() => {
@@ -332,6 +343,7 @@ export default function ChatScreen() {
       <Modal transparent visible={reportVisible} animationType="fade" onRequestClose={() => setReportVisible(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => !submitting && setReportVisible(false)}>
           <View style={styles.sheet}>
+            <View style={styles.grabber} />
             <Text style={styles.sheetTitle}>What went wrong?</Text>
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {REPORT_REASONS.map((reason) => (
@@ -352,52 +364,57 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   rowMine: { alignItems: 'flex-end' },
   rowTheirs: { alignItems: 'flex-start' },
-  warning: { fontSize: 12, color: colors.danger, maxWidth: 260, marginTop: 4, lineHeight: 16 },
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  error: { fontSize: 12, color: colors.danger, paddingVertical: 8 },
-  notice: { fontSize: 12, color: colors.textSecondary, paddingVertical: 8 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  menuGlyph: { fontSize: 18, color: colors.textSecondary, fontWeight: '700' },
-  list: { paddingVertical: 12, gap: 8 },
-  bubble: { maxWidth: '80%', paddingTop: 8, paddingBottom: 6, paddingHorizontal: 12, borderRadius: 16, marginBottom: 4 },
-  bubbleTheirs: { backgroundColor: colors.surface, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
-  bubbleMine: { backgroundColor: colors.accentFill, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-  bubbleTextTheirs: { fontSize: 15, lineHeight: 20, color: colors.textPrimary },
-  bubbleTextMine: { fontSize: 15, lineHeight: 20, color: colors.onAccent },
-  time: { fontSize: 10, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 2 },
-  timeMine: { color: colors.onAccent, opacity: 0.75 },
-  quote: { borderLeftWidth: 3, borderRadius: 6, paddingVertical: 4, paddingHorizontal: 8, marginBottom: 6 },
-  quoteTheirs: { borderLeftColor: colors.accentFill, backgroundColor: 'rgba(0,0,0,0.05)' },
-  quoteMine: { borderLeftColor: colors.onAccent, backgroundColor: 'rgba(255,255,255,0.18)' },
-  quoteName: { fontSize: 12, fontWeight: '600', color: colors.accentText },
-  quoteText: { fontSize: 13, color: colors.textSecondary },
-  quoteTextMine: { color: colors.onAccent },
-  replyBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderLeftWidth: 3, borderLeftColor: colors.accentFill, backgroundColor: colors.surface, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, marginTop: 6 },
+  warning: { fontSize: 12, color: colors.danger, maxWidth: 280, marginTop: 4, lineHeight: 17, backgroundColor: colors.dangerBg, padding: 10, borderRadius: 12, overflow: 'hidden' },
+  container: { flex: 1, backgroundColor: colors.bg },
+  error: { fontSize: 13, color: colors.danger, paddingVertical: 8, paddingHorizontal: 16 },
+  notice: { fontSize: 13, color: colors.gold, backgroundColor: colors.accentBg, marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 12, overflow: 'hidden', lineHeight: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  menuButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  dots: { flexDirection: 'row', gap: 3 },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textPrimary },
+  list: { paddingVertical: 16, paddingHorizontal: 16, gap: 6, flexGrow: 1 },
+  bubble: { maxWidth: '82%', paddingTop: 9, paddingBottom: 7, paddingHorizontal: 14, borderRadius: 20, marginBottom: 2 },
+  bubbleTheirs: { backgroundColor: colors.surfaceRaised, alignSelf: 'flex-start', borderBottomLeftRadius: 6 },
+  bubbleMine: { backgroundColor: colors.accentFill, alignSelf: 'flex-end', borderBottomRightRadius: 6 },
+  bubbleTextTheirs: { fontSize: 16, lineHeight: 22, color: colors.textPrimary },
+  bubbleTextMine: { fontSize: 16, lineHeight: 22, color: colors.onAccent },
+  time: { fontSize: 11, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 3 },
+  timeMine: { color: '#6B6B6B' },
+  quote: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
+  quoteTheirs: { borderLeftColor: colors.gold, backgroundColor: 'rgba(255,255,255,0.06)' },
+  quoteMine: { borderLeftColor: '#000000', backgroundColor: 'rgba(0,0,0,0.07)' },
+  quoteName: { fontSize: 13, fontWeight: '700', color: colors.gold },
+  quoteText: { fontSize: 14, color: colors.textSecondary, lineHeight: 19 },
+  quoteTextMine: { color: '#333333' },
+  replyBar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderLeftWidth: 3, borderLeftColor: colors.gold, backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, marginHorizontal: 12, marginTop: 6 },
   replyBarText: { flex: 1 },
-  replyClose: { fontSize: 16, color: colors.textSecondary, padding: 4 },
-  empty: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 40 },
-  headerName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  replyClose: { fontSize: 16, color: colors.textSecondary, padding: 6 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
+  emptyName: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, marginTop: 4 },
+  empty: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  emptyTip: { fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19, maxWidth: 260 },
+  headerName: { fontSize: 17, fontWeight: '700', color: colors.textPrimary },
   headerNote: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  headerSub: { fontSize: 13, color: colors.gold, marginTop: 2 },
   headerText: { flex: 1 },
-  back: { paddingRight: 4, paddingVertical: 2 },
-  backGlyph: { fontSize: 28, color: colors.textSecondary, lineHeight: 30 },
-  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  noteSheet: { paddingHorizontal: 16, gap: 8, paddingTop: 16 },
-  noteTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  noteHelp: { fontSize: 13, color: colors.textSecondary },
-  noteInput: { borderWidth: 0.5, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.textPrimary },
-  headerSub: { fontSize: 12, color: colors.accentText, marginTop: 2 },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 8 },
-  input: { flex: 1, borderWidth: 0.5, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, maxHeight: 120, color: colors.textPrimary },
-  sendButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
-  sendButtonOff: { opacity: 0.4 },
-  sendGlyph: { fontSize: 18, color: colors.onAccent },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, paddingHorizontal: 4 },
-  sheetTitle: { fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingVertical: 10 },
-  sheetRow: { paddingVertical: 14, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border },
-  sheetRowText: { fontSize: 15, color: colors.textPrimary },
-  sheetRowDanger: { fontSize: 15, color: colors.danger, fontWeight: '600' },
-  sheetRowMuted: { fontSize: 15, color: colors.textSecondary },
+  back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  backGlyph: { fontSize: 30, color: colors.textPrimary, lineHeight: 32, marginTop: -3 },
+  noteSheet: { paddingHorizontal: 20, gap: 10 },
+  noteTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginTop: 4 },
+  noteHelp: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
+  noteInput: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg, borderRadius: 14, paddingHorizontal: 14, minHeight: 50, fontSize: 16, color: colors.textPrimary, marginVertical: 6 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 },
+  input: { flex: 1, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12, fontSize: 16, maxHeight: 140, color: colors.textPrimary },
+  sendButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
+  sendButtonOff: { backgroundColor: colors.surfaceRaised },
+  sendGlyph: { fontSize: 20, color: colors.onAccent, fontWeight: '700' },
+  sendGlyphOff: { color: colors.textMuted },
+  backdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8, paddingBottom: 28, paddingHorizontal: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, width: '100%', maxWidth: 480, alignSelf: 'center' },
+  grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 10 },
+  sheetTitle: { fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16, lineHeight: 18 },
+  sheetRow: { paddingVertical: 16, alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  sheetRowText: { fontSize: 16, color: colors.textPrimary, fontWeight: '500' },
+  sheetRowDanger: { fontSize: 16, color: colors.danger, fontWeight: '600' },
+  sheetRowMuted: { fontSize: 16, color: colors.textSecondary },
 });

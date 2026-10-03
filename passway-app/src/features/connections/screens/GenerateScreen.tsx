@@ -11,6 +11,7 @@ import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
+import Brand from '../../../components/Brand';
 import { useActiveChats } from '../../chat/api/chats';
 
 export default function GenerateScreen() {
@@ -51,11 +52,11 @@ export default function GenerateScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.top}>
-        <Text style={styles.brand}>Passway</Text>
+        <Brand />
         <View style={styles.topRight}>
         {chats.length > 0 && (
           <TouchableOpacity onPress={() => navigation.navigate('Chats')} accessibilityRole="button" testID="open-chats">
-            <Text style={styles.chats}>Chats ({chats.length})</Text>
+            <Text style={styles.chats}>{`Chats  ${chats.length}`}</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel="Settings" testID="open-settings">
@@ -64,28 +65,26 @@ export default function GenerateScreen() {
         </View>
       </View>
       <View style={styles.center}>
-        <IconBadge glyph={'\u2318'} />
-        <Text style={styles.helper}>Met someone new? Generate a code to connect.</Text>
+        <IconBadge icon="link" />
+        <Text style={styles.title} accessibilityRole="header">Met someone?</Text>
+        <Text style={styles.helper}>Create a one time code and show it to them. It works for 5 minutes.</Text>
         <LabeledField label="your name" placeholder="Your name" value={name} onChangeText={setName} maxLength={30} testID="name-input" />
         {error && <Text style={styles.error}>{error}</Text>}
         <Button label="Generate code" onPress={handleGenerate} loading={loading} testID="generate" />
-        <TouchableOpacity disabled={loading} onPress={() => navigation.navigate('EnterCode')} testID="have-code">
-          <Text style={styles.link}>Have a code instead?</Text>
-        </TouchableOpacity>
+        <Button label="I have a code" variant="secondary" disabled={loading} onPress={() => navigation.navigate('EnterCode')} testID="have-code" />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  brand: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  topRight: { flexDirection: 'row', gap: 16, alignItems: 'center' },
-  chats: { fontSize: 14, color: colors.accentText, fontWeight: '500' },
-  settings: { fontSize: 14, color: colors.textSecondary },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  helper: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', maxWidth: 220, lineHeight: 19 },
-  error: { fontSize: 12, color: colors.danger, alignSelf: 'flex-start' },
-  link: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 40 },
+  topRight: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  chats: { fontSize: 14, color: colors.onAccent, fontWeight: '700', backgroundColor: colors.gold, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
+  settings: { fontSize: 14, color: colors.textSecondary, fontWeight: '500', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface, borderRadius: 999, overflow: 'hidden' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingBottom: 24 },
+  title: { fontSize: 30, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.6 },
+  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22, marginBottom: 10 },
+  error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
 });

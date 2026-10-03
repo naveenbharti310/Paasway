@@ -44,12 +44,15 @@ export default function RequestScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title="request" showBack={false} />
+      <ScreenHeader title="Request" showBack={false} />
       <View style={styles.center}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarGlyph}>{requesterName.charAt(0).toUpperCase()}</Text>
+        <View style={styles.ring}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarGlyph}>{requesterName.charAt(0).toUpperCase()}</Text>
+          </View>
         </View>
-        <Text style={styles.title}>{`${requesterName} wants to connect`}</Text>
+        <Text style={styles.name}>{requesterName}</Text>
+        <Text style={styles.title}>wants to connect with you</Text>
         <Text style={styles.helper}>{`Requested ${elapsedSeconds}s after you shared the code`}</Text>
         {error && <Text style={styles.error}>{error}</Text>}
         {expired && <Text style={styles.error}>This request has expired.</Text>}
@@ -64,13 +67,15 @@ export default function RequestScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
-  avatarGlyph: { fontSize: 20, color: colors.accentText, fontWeight: '600' },
-  title: { fontSize: 15, fontWeight: '500', color: colors.textPrimary, textAlign: 'center', maxWidth: 220 },
-  error: { fontSize: 12, color: colors.danger, textAlign: 'center' },
-  helper: { fontSize: 12, color: colors.textMuted },
-  row: { flexDirection: 'row', gap: 10, marginTop: 6, width: '100%' },
-  half: { flex: 1 },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  ring: { width: 112, height: 112, borderRadius: 56, borderWidth: 1, borderColor: '#2A2418', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  avatar: { width: 92, height: 92, borderRadius: 46, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
+  avatarGlyph: { fontSize: 38, color: colors.gold, fontWeight: '700' },
+  name: { fontSize: 30, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.5 },
+  title: { fontSize: 16, color: colors.textSecondary, textAlign: 'center' },
+  error: { fontSize: 13, color: colors.danger, textAlign: 'center' },
+  helper: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
+  row: { flexDirection: 'row', gap: 12, marginTop: 28, width: '100%' },
+  half: { flex: 1, width: undefined },
 });

@@ -104,8 +104,9 @@ export default function EnterCodeScreen() {
       <View style={styles.container}>
         <ScreenHeader showBack={false} />
         <View style={styles.center}>
-          <ActivityIndicator color={colors.accentFill} />
-          <Text style={styles.helper}>Waiting for them to accept</Text>
+          <View style={styles.pulse}><ActivityIndicator color={colors.gold} size="large" /></View>
+          <Text style={styles.title}>Waiting for them to accept</Text>
+          <Text style={styles.helper}>They will see your name and choose to accept or decline.</Text>
         </View>
       </View>
     );
@@ -113,9 +114,10 @@ export default function EnterCodeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title="enter code" showBack />
+      <ScreenHeader title="Enter code" showBack />
       <View style={styles.center}>
-        <Text style={styles.helper}>Enter the code they shared with you</Text>
+        <Text style={styles.title} accessibilityRole="header">Enter their code</Text>
+        <Text style={styles.helper}>Type the 4 characters shown on their screen.</Text>
         <View style={styles.otpRow}>
           {digits.map((digit, index) => (
             <TextInput
@@ -127,6 +129,8 @@ export default function EnterCodeScreen() {
               value={digit}
               onChangeText={(value) => updateDigit(index, value)}
               autoCapitalize="characters"
+              selectionColor={colors.gold}
+              accessibilityLabel={`Character ${index + 1} of 4`}
             />
           ))}
         </View>
@@ -139,11 +143,13 @@ export default function EnterCodeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  helper: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 220 },
-  otpRow: { flexDirection: 'row', gap: 8 },
-  otpBox: { width: 46, height: 54, borderWidth: 0.5, borderColor: colors.border, borderRadius: 10, textAlign: 'center', fontSize: 20, color: colors.textPrimary },
-  otpBoxFilled: { borderColor: colors.accentFill, borderWidth: 1.5 },
-  error: { fontSize: 12, color: colors.danger, alignSelf: 'flex-start' },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingBottom: 40 },
+  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
+  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 290, lineHeight: 22, marginBottom: 6 },
+  pulse: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  otpRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  otpBox: { width: 60, height: 70, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: '700', color: colors.textPrimary },
+  otpBoxFilled: { borderColor: colors.gold, color: colors.gold },
+  error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
 });

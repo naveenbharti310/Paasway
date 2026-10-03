@@ -1,6 +1,8 @@
 import { useRef, type ReactNode } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, StyleSheet, View } from 'react-native';
 import { colors } from '../../../theme/colors';
+import { tap } from '../../../services/haptics';
+import Icon from '../../../components/Icon';
 
 const TRIGGER = 56;
 const MAX = 80;
@@ -21,7 +23,7 @@ export default function SwipeToReply({ onReply, children }: Props) {
     onPanResponderGrant: () => { fired.current = false; },
     onPanResponderMove: (_e, g) => {
       x.setValue(Math.max(-MAX, Math.min(MAX, g.dx)));
-      if (!fired.current && Math.abs(g.dx) >= TRIGGER) fired.current = true;
+      if (!fired.current && Math.abs(g.dx) >= TRIGGER) { fired.current = true; tap(); }
     },
     onPanResponderRelease: () => {
       if (fired.current) onReplyRef.current();
@@ -36,12 +38,12 @@ export default function SwipeToReply({ onReply, children }: Props) {
   const leftArrow = x.interpolate({ inputRange: [0, 16, TRIGGER], outputRange: [0, 0, 1], extrapolate: 'clamp' });
   const rightArrow = x.interpolate({ inputRange: [-TRIGGER, -16, 0], outputRange: [1, 0, 0], extrapolate: 'clamp' });
   return (
-    <View>
+    <View style={styles.full}>
       <Animated.View pointerEvents="none" style={[styles.arrow, styles.left, { opacity: leftArrow }]}>
-        <Text style={styles.arrowText}>{'\u21A9'}</Text>
+        <View style={styles.arrowCircle}><Icon name="reply" size={16} color={colors.gold} /></View>
       </Animated.View>
       <Animated.View pointerEvents="none" style={[styles.arrow, styles.right, { opacity: rightArrow }]}>
-        <Text style={styles.arrowText}>{'\u21A9'}</Text>
+        <View style={styles.arrowCircle}><Icon name="reply" size={16} color={colors.gold} /></View>
       </Animated.View>
       <Animated.View style={{ transform: [{ translateX: x }] }} {...responder.panHandlers}>
         {children}
@@ -51,8 +53,9 @@ export default function SwipeToReply({ onReply, children }: Props) {
 }
 
 const styles = StyleSheet.create({
+  full: { alignSelf: 'stretch' },
   arrow: { position: 'absolute', top: 0, bottom: 0, width: 32, alignItems: 'center', justifyContent: 'center' },
   left: { left: 0 },
   right: { right: 0 },
-  arrowText: { fontSize: 20, color: colors.accentText },
+  arrowCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
 });

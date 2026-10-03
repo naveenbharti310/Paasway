@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
 import { signOut } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
@@ -79,31 +79,46 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader title="settings" showBack />
-      <Text style={styles.section}>Your name</Text>
-      <LabeledField label="name shown to people you connect with" value={name} onChangeText={setName} maxLength={30} testID="settings-name" />
-      <Button label="Save name" variant="secondary" onPress={handleSaveName} loading={saving} disabled={!name.trim() || name.trim() === savedName} />
-      {message && <Text style={styles.ok}>{message}</Text>}
+      <ScreenHeader title="Settings" showBack large />
 
-      <Text style={styles.section}>Staying safe</Text>
-      {SAFETY_TIPS.map((tip) => <Text key={tip} style={styles.tip}>{tip}</Text>)}
+      <Text style={styles.section}>PROFILE</Text>
+      <View style={styles.card}>
+        <LabeledField label="Name shown to people you connect with" value={name} onChangeText={setName} maxLength={30} testID="settings-name" />
+        <Button label="Save name" variant="secondary" onPress={handleSaveName} loading={saving} disabled={!name.trim() || name.trim() === savedName} />
+        {message && <Text style={styles.ok}>{message}</Text>}
+      </View>
 
-      <Text style={styles.section}>Account</Text>
-      <Text style={styles.helper}>Your phone number is used only to sign in. It is never shown to anyone.</Text>
-      {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      <Button label="Sign out" variant="secondary" onPress={() => void signOut(auth)} disabled={deleting} />
-      <Button label="Delete account" variant="secondary" onPress={confirmDelete} loading={deleting} style={styles.danger} testID="delete-account" />
+      <Text style={styles.section}>STAYING SAFE</Text>
+      <View style={styles.card}>
+        {SAFETY_TIPS.map((tip, i) => (
+          <View key={tip} style={[styles.tipRow, i > 0 && styles.tipDivider]}>
+            <View style={styles.tipDot} />
+            <Text style={styles.tip}>{tip}</Text>
+          </View>
+        ))}
+      </View>
+
+      <Text style={styles.section}>ACCOUNT</Text>
+      <View style={styles.card}>
+        <Text style={styles.helper}>Your phone number is used only to sign in. It is never shown to anyone.</Text>
+        {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+        <Button label="Sign out" variant="secondary" onPress={() => void signOut(auth)} disabled={deleting} />
+        <Button label="Delete account" variant="danger" onPress={confirmDelete} loading={deleting} testID="delete-account" />
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 12, paddingBottom: 48 },
-  section: { fontSize: 13, fontWeight: '600', color: colors.textPrimary, marginTop: 14 },
-  tip: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
-  helper: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
-  ok: { fontSize: 12, color: colors.accentText },
-  error: { fontSize: 12, color: colors.danger },
-  danger: { borderColor: colors.danger },
+  content: { paddingHorizontal: 24, paddingTop: 16, gap: 10, paddingBottom: 48 },
+  section: { fontSize: 12, fontWeight: '600', color: colors.textMuted, letterSpacing: 1.4, marginTop: 22, marginLeft: 4 },
+  card: { backgroundColor: colors.surface, borderRadius: 20, padding: 16, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  tipRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingVertical: 4 },
+  tipDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 14 },
+  tipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold, marginTop: 8 },
+  tip: { flex: 1, fontSize: 15, color: colors.textSecondary, lineHeight: 22 },
+  helper: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
+  ok: { fontSize: 13, color: colors.success },
+  error: { fontSize: 13, color: colors.danger },
 });

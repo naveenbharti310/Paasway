@@ -1,7 +1,7 @@
 import type { Connection } from '../../types/models';
 
 // Each chat gets its own colour, so two people with the same name look different.
-const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16'];
+const COLORS = ['#7AA7FF', '#5FD3A5', '#F2C46D', '#FF8A80', '#B79CFF', '#FF8FC7', '#5ED6D0', '#FFAA6B', '#9AA5FF', '#B5E07A'];
 
 export function chatColor(connectionId: string): string {
   let hash = 0;

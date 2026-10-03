@@ -27,7 +27,7 @@ export default function UnderAgeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.center}>
-        <IconBadge glyph={'\u2715'} tone="neutral" />
+        <IconBadge icon="lock" tone="neutral" />
         <Text style={styles.title} accessibilityRole="header">Passway is for adults</Text>
         <Text style={styles.helper}>You need to be 18 or over to use Passway. You can delete your account now, and you are welcome back once you turn 18.</Text>
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -39,9 +39,9 @@ export default function UnderAgeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  title: { fontSize: 20, fontWeight: '600', color: colors.textPrimary, textAlign: 'center' },
-  helper: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', maxWidth: 290, lineHeight: 20 },
-  error: { fontSize: 12, color: colors.danger },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
+  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 310, lineHeight: 22 },
+  error: { fontSize: 13, color: colors.danger },
 });

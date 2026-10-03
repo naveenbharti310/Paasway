@@ -15,7 +15,8 @@ const config: ExpoConfig = {
   ...(easOwner ? { owner: easOwner } : {}),
   version: '0.2.0',
   orientation: 'portrait',
-  userInterfaceStyle: 'automatic',
+  userInterfaceStyle: 'dark',
+  backgroundColor: '#000000',
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.passway.app',

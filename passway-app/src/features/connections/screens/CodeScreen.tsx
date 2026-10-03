@@ -85,30 +85,40 @@ export default function CodeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title="your code" showBack={false} />
+      <ScreenHeader title="Your code" showBack={false} />
       <View style={styles.center}>
-        <View style={styles.codeCard}>
-          <Text style={styles.codeLabel}>code</Text>
-          <Text style={styles.codeText} testID="code-text">{tid}</Text>
-        </View>
-        <Text style={[styles.timer, urgent && styles.timerUrgent]}>{`Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`}</Text>
         <Text style={styles.helper}>Show this to the person you just met</Text>
+        <View style={styles.codeCard}>
+          <Text style={styles.codeLabel}>ONE TIME CODE</Text>
+          <Text style={styles.codeText} testID="code-text" selectable={false}>{tid}</Text>
+          <View style={styles.track}>
+            <View style={[styles.fill, { width: `${Math.max(0, Math.min(1, secondsLeft / Math.max(1, (expiresAt - createdAt) / 1000))) * 100}%` }, urgent && styles.fillUrgent]} />
+          </View>
+          <Text style={[styles.timer, urgent && styles.timerUrgent]}>{`Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`}</Text>
+        </View>
+        <Text style={styles.waiting}>Waiting for them to enter it</Text>
         {error && <Text style={styles.error}>{error}</Text>}
-        <Button label="Cancel" variant="secondary" onPress={handleCancel} loading={canceling} style={styles.cancelButton} />
+      </View>
+      <View style={styles.bottom}>
+        <Button label="Cancel code" testID="cancel-code" variant="secondary" onPress={handleCancel} loading={canceling} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  codeCard: { backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 22, paddingHorizontal: 34, alignItems: 'center' },
-  codeLabel: { fontSize: 11, color: colors.textMuted, marginBottom: 6, letterSpacing: 1 },
-  codeText: { fontSize: 34, fontWeight: '700', letterSpacing: 5, color: colors.textPrimary },
-  error: { fontSize: 12, color: colors.danger, textAlign: 'center' },
-  timer: { fontSize: 13, color: colors.textSecondary },
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
+  bottom: { paddingBottom: 16 },
+  codeCard: { width: '100%', backgroundColor: colors.surface, borderRadius: 28, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: '#2A2418' },
+  codeLabel: { fontSize: 11, color: colors.textMuted, marginBottom: 12, letterSpacing: 2, fontWeight: '600' },
+  codeText: { fontSize: 60, fontWeight: '700', letterSpacing: 14, color: colors.gold, paddingLeft: 14 },
+  track: { width: '100%', height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: 24, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: 2, backgroundColor: colors.gold },
+  fillUrgent: { backgroundColor: colors.danger },
+  error: { fontSize: 13, color: colors.danger, textAlign: 'center' },
+  timer: { fontSize: 13, color: colors.textSecondary, marginTop: 12, fontVariant: ['tabular-nums'] },
   timerUrgent: { color: colors.danger, fontWeight: '600' },
-  helper: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 220 },
-  cancelButton: { width: 140 },
+  helper: { fontSize: 16, color: colors.textSecondary, textAlign: 'center', maxWidth: 280 },
+  waiting: { fontSize: 13, color: colors.textMuted },
 });

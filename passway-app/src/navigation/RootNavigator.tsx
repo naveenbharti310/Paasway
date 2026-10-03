@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { errorMessage } from '../services/errors';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Text, TouchableOpacity, Platform } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { onAuthStateChanged, signOut, type User } from '@react-native-firebase/auth';
 import { auth } from '../firebase/client';
@@ -26,6 +26,8 @@ import { colors } from '../theme/colors';
 import type { RootStackParamList, AuthStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const navTheme = { ...DarkTheme, colors: { ...DarkTheme.colors, background: colors.bg, card: colors.bg, border: colors.hairline, primary: colors.gold, text: colors.textPrimary } };
+const screenOptions = { headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'slide_from_right' as const };
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
 export default function RootNavigator() {
@@ -104,9 +106,9 @@ export default function RootNavigator() {
   if (user && stage === 'needs_age') return <AgeCheckScreen onResult={(confirmed) => setStage(confirmed ? 'ready' : 'under_minimum')} />;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navTheme}>
       {user ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
+        <Stack.Navigator screenOptions={screenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />
           <Stack.Screen name="Code" component={CodeScreen} />
           <Stack.Screen name="EnterCode" component={EnterCodeScreen} />
@@ -117,7 +119,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       ) : (
-        <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+        <AuthStack.Navigator screenOptions={screenOptions}>
           <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
           <AuthStack.Screen name="PhoneAuth" component={PhoneAuthScreen} />
         </AuthStack.Navigator>

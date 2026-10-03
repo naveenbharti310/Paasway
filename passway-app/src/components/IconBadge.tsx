@@ -1,27 +1,29 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { colors } from '../theme/colors';
+import Icon, { type IconName } from './Icon';
 
 interface Props {
-  glyph: string;
+  icon: IconName;
   tone?: 'accent' | 'neutral';
 }
 
-// The rounded square icon badge used for the focal icon on a handful
-// of screens. A shared component so the size and corner radius stay
-// identical everywhere instead of drifting screen to screen.
-export default function IconBadge({ glyph, tone = 'accent' }: Props) {
+// The round icon used as the focal point on a handful of screens.
+export default function IconBadge({ icon, tone = 'accent' }: Props) {
+  const accent = tone === 'accent';
   return (
-    <View style={[styles.badge, tone === 'accent' ? styles.accent : styles.neutral]}>
-      <Text style={[styles.glyph, tone === 'accent' ? styles.accentText : styles.neutralText]}>{glyph}</Text>
+    <View style={[styles.ring, accent ? styles.ringAccent : styles.ringNeutral]}>
+      <View style={[styles.badge, accent ? styles.accent : styles.neutral]}>
+        <Icon name={icon} size={28} color={accent ? colors.gold : colors.textSecondary} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  badge: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  ring: { width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, marginBottom: 6 },
+  ringAccent: { borderColor: '#2A2418' },
+  ringNeutral: { borderColor: colors.border },
+  badge: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center' },
   accent: { backgroundColor: colors.accentBg },
   neutral: { backgroundColor: colors.surface },
-  glyph: { fontSize: 20, fontWeight: '600' },
-  accentText: { color: colors.accentText },
-  neutralText: { color: colors.textSecondary },
 });
