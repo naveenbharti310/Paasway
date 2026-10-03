@@ -5,8 +5,8 @@ import { colors } from '../../../theme/colors';
 import ScreenHeader from '../../../components/ScreenHeader';
 import Button from '../../../components/Button';
 import type { RootNavigationProp } from '../../../navigation/types';
-import { useActiveChats, useNotes } from '../api/chats';
-import { chatColor, metLabel, otherPerson } from '../identity';
+import { useActiveChats, useNotes, useLastMessage } from '../api/chats';
+import { chatColor, otherPerson } from '../identity';
 
 export default function ChatsScreen() {
   const navigation = useNavigation<RootNavigationProp>();
@@ -33,7 +33,7 @@ export default function ChatsScreen() {
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.name} numberOfLines={1}>{other.name}{note ? <Text style={styles.note}>{`  ${note}`}</Text> : null}</Text>
-                  <Text style={styles.meta} numberOfLines={1}>{`${metLabel(item.createdAt)} \u00B7 code ${item.originTid}`}</Text>
+                  <LastMessage connectionId={item.connectionId} uid={uid} />
                 </View>
               </TouchableOpacity>
             );
@@ -43,6 +43,12 @@ export default function ChatsScreen() {
       <Button label="Connect with someone new" onPress={() => navigation.navigate('Generate')} testID="new-connection" />
     </View>
   );
+}
+
+function LastMessage({ connectionId, uid }: { connectionId: string; uid: string }) {
+  const last = useLastMessage(connectionId);
+  const text = last ? `${last.senderId === uid ? 'You: ' : ''}${last.content.replace(/\s+/g, ' ')}` : 'No messages yet';
+  return <Text style={styles.meta} numberOfLines={1}>{text}</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -56,5 +62,5 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, gap: 2 },
   name: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
   note: { fontSize: 14, fontWeight: '400', color: colors.textSecondary },
-  meta: { fontSize: 12, color: colors.textMuted },
+  meta: { fontSize: 13, color: colors.textMuted },
 });

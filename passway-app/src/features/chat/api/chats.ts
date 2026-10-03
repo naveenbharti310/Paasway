@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from '@react-native-firebase/firestore';
+import { collection, deleteDoc, doc, limit, onSnapshot, orderBy, query, setDoc, where } from '@react-native-firebase/firestore';
 import { db } from '../../../firebase/client';
-import type { Connection } from '../../../types/models';
+import type { Connection, Message } from '../../../types/models';
 
 // Every open chat the person is in, newest activity first.
 export function useActiveChats(uid: string): { chats: Connection[]; loading: boolean } {
@@ -39,4 +39,15 @@ export async function saveNote(uid: string, connectionId: string, note: string):
   const ref = doc(db, 'users', uid, 'notes', connectionId);
   if (!value) await deleteDoc(ref);
   else await setDoc(ref, { note: value, updatedAt: Date.now() });
+}
+
+// The newest message in a chat, shown under the name in the chats list.
+export function useLastMessage(connectionId: string): Message | null {
+  const [last, setLast] = useState<Message | null>(null);
+  useEffect(() => onSnapshot(
+    query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'desc'), limit(1)),
+    (snap) => setLast(snap.docs[0] ? (snap.docs[0].data() as Message) : null),
+    () => setLast(null),
+  ), [connectionId]);
+  return last;
 }

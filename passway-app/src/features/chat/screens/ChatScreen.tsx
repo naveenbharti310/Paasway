@@ -11,7 +11,7 @@ import { colors } from '../../../theme/colors';
 import type { RootStackParamList, RootNavigationProp, EndOutcome } from '../../../navigation/types';
 import { Message, Connection } from '../../../types/models';
 import SwipeToReply from '../components/SwipeToReply';
-import { chatColor, metLabel } from '../identity';
+import { chatColor } from '../identity';
 import { saveNote, useNotes } from '../api/chats';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -193,8 +193,8 @@ export default function ChatScreen() {
           <Text style={styles.avatarText}>{(otherName || '?').charAt(0).toUpperCase()}</Text>
         </View>
         <TouchableOpacity style={styles.headerText} onPress={() => { setNoteDraft(note ?? ''); setNoteVisible(true); }} accessibilityHint="Add a private note to remember who this is" testID="chat-title">
-          <Text style={styles.headerName} numberOfLines={1}>{otherName || 'Loading'}{note ? <Text style={styles.headerNote}>{`  ${note}`}</Text> : null}</Text>
-          <Text style={styles.headerSub} numberOfLines={1}>{connection ? `${metLabel(connection.createdAt)} \u00B7 code ${connection.originTid}` : ''}</Text>
+          <Text style={styles.headerName} numberOfLines={1}>{otherName || 'Loading'}</Text>
+          <Text style={note ? styles.headerNote : styles.headerSub} numberOfLines={1} testID="chat-note">{note || 'Add a private note'}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" testID="chat-options">
           <Text style={styles.menuGlyph}>&#8942;</Text>
@@ -271,7 +271,7 @@ export default function ChatScreen() {
           <View style={[styles.sheet, styles.noteSheet]}>
             <Text style={styles.noteTitle}>{`A note about ${otherName}`}</Text>
             <Text style={styles.noteHelp}>Only you can see this. It helps you tell people with the same name apart.</Text>
-            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="For example: from the gym" maxLength={40} style={styles.noteInput} testID="note-input" autoFocus />
+            <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder="For example: Metro, blue jacket" maxLength={40} style={styles.noteInput} testID="note-input" autoFocus />
             <TouchableOpacity style={styles.sheetRow} testID="note-save" onPress={() => {
               setNoteVisible(false);
               void saveNote(currentUserId, connectionId, noteDraft).catch((err) => setError(errorMessage(err, 'Could not save the note. Try again.')));
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
   replyClose: { fontSize: 16, color: colors.textSecondary, padding: 4 },
   empty: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 40 },
   headerName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  headerNote: { fontSize: 14, fontWeight: '400', color: colors.textSecondary },
+  headerNote: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   headerText: { flex: 1 },
   back: { paddingRight: 4, paddingVertical: 2 },
   backGlyph: { fontSize: 28, color: colors.textSecondary, lineHeight: 30 },
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
   noteTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
   noteHelp: { fontSize: 13, color: colors.textSecondary },
   noteInput: { borderWidth: 0.5, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: colors.textPrimary },
-  headerSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  headerSub: { fontSize: 12, color: colors.accentText, marginTop: 2 },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 8 },
   input: { flex: 1, borderWidth: 0.5, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, maxHeight: 120, color: colors.textPrimary },
   sendButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },

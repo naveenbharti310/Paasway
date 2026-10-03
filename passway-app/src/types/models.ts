@@ -41,7 +41,6 @@ export interface Connection {
   userAName: string;
   userB: string;
   userBName: string;
-  originTid: string;
   status: ConnectionStatus;
   endedBy?: string;
   createdAt: number;

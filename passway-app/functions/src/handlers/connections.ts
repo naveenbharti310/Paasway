@@ -30,7 +30,7 @@ export const respondToRequest = authedCallable(async (uid, data) => {
       if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
       await assertAccountActive(uid, tx);
       await assertAccountActive(pending.requesterId, tx);
-      tx.create(newConnectionRef, { connectionId: newConnectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, originTid: pending.tid, status: 'active', createdAt: now, lastActivityAt: now });
+      tx.create(newConnectionRef, { connectionId: newConnectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, status: 'active', createdAt: now, lastActivityAt: now });
       tx.update(requestRef, { status: 'accepted', connectionId: newConnectionRef.id });
       tx.update(tidRef, { status: 'connected' });
       return { connectionId: newConnectionRef.id };
