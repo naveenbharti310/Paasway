@@ -22,6 +22,7 @@ import ChatScreen from '../features/chat/screens/ChatScreen';
 import ChatsScreen from '../features/chat/screens/ChatsScreen';
 import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
+import { hasSeenWelcome, welcomeSeenNow } from '../services/onboarding';
 
 import type { RootStackParamList, AuthStackParamList } from './types';
 
@@ -38,6 +39,7 @@ export default function RootNavigator() {
   const [resumeConnectionId, setResumeConnectionId] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [welcomeSeen, setWelcomeSeen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -53,6 +55,8 @@ export default function RootNavigator() {
       try {
         let resume: string | null = null;
         let nextStage: AccountStage = 'needs_age';
+        // Signed out: skip the welcome pages if this phone has already seen them.
+        if (!u) { const seen = await hasSeenWelcome(); if (active && currentVersion === version) setWelcomeSeen(seen); }
         if (u) {
           nextStage = await ensureUserDoc(u.uid);
           // Open the chats list if any conversation is still active.
@@ -108,7 +112,7 @@ export default function RootNavigator() {
   return (
     <NavigationContainer theme={navTheme}>
       {user ? (
-        <Stack.Navigator screenOptions={screenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
+        <Stack.Navigator key="app" screenOptions={screenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />
           <Stack.Screen name="Code" component={CodeScreen} />
           <Stack.Screen name="EnterCode" component={EnterCodeScreen} />
@@ -119,7 +123,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       ) : (
-        <AuthStack.Navigator screenOptions={screenOptions}>
+        <AuthStack.Navigator key="auth" screenOptions={screenOptions} initialRouteName={welcomeSeen || welcomeSeenNow() ? 'PhoneAuth' : 'Welcome'}>
           <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
           <AuthStack.Screen name="PhoneAuth" component={PhoneAuthScreen} />
         </AuthStack.Navigator>

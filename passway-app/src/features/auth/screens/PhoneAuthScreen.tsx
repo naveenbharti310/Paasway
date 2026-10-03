@@ -2,6 +2,9 @@ import { errorMessage } from '../../../services/errors';
 import { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import FormScreen from '../../../components/FormScreen';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { AuthStackParamList } from '../../../navigation/types';
 import { signInWithPhoneNumber, type ConfirmationResult } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
 import { colors } from '../../../theme/colors';
@@ -11,6 +14,7 @@ import IconBadge from '../../../components/IconBadge';
 import Brand from '../../../components/Brand';
 
 export default function PhoneAuthScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
@@ -69,6 +73,8 @@ export default function PhoneAuthScreen() {
             <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
+            <Text style={styles.notice}>Passway is for people aged 18 and over.</Text>
+            <Button label="How Passway works" variant="ghost" onPress={() => navigation.navigate('Welcome')} testID="how-it-works" />
           </>
         ) : (
           <>
@@ -91,4 +97,5 @@ const styles = StyleSheet.create({
   helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22, marginBottom: 8 },
   hint: { fontSize: 13, color: colors.gold, textAlign: 'center', maxWidth: 300, lineHeight: 19, backgroundColor: colors.accentBg, padding: 12, borderRadius: 12, overflow: 'hidden' },
   error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
+  notice: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
 });

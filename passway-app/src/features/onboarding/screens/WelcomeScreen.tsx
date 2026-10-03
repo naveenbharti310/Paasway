@@ -6,6 +6,7 @@ import { colors } from '../../../theme/colors';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 import Brand from '../../../components/Brand';
+import { markWelcomeSeen } from '../../../services/onboarding';
 import type { AuthStackParamList } from '../../../navigation/types';
 
 const PAGES = [
@@ -51,7 +52,7 @@ export default function WelcomeScreen() {
       </View>
       <View style={styles.actions}>
         {last && <Text style={styles.notice}>Passway is for people aged 18 and over.</Text>}
-        <Button testID={last ? 'get-started' : 'welcome-next'} label={last ? 'Get started' : 'Next'} onPress={() => (last ? navigation.navigate('PhoneAuth') : setIndex(index + 1))} />
+        <Button testID={last ? 'get-started' : 'welcome-next'} label={last ? 'Get started' : 'Next'} onPress={() => { if (last) { markWelcomeSeen(); navigation.navigate('PhoneAuth'); } else setIndex(index + 1); }} />
         {index > 0 && <Button label="Back" variant="ghost" onPress={() => setIndex(index - 1)} />}
       </View>
     </View>

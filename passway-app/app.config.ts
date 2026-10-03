@@ -1,6 +1,8 @@
 import type { ExpoConfig } from 'expo/config';
-import { existsSync } from 'fs';
-import { execSync } from 'child_process';
+// Node helpers, loaded this way so the app's type check does not need Node types.
+declare const require: (name: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+const { existsSync } = require('fs');
+const { execSync } = require('child_process');
 
 // The app icon is stored as SVG artwork in assets/src. Make the PNG files
 // the build needs if they are not there yet (for example on Expo's servers).
