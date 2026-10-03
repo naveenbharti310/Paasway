@@ -44,7 +44,8 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == resource.data.userA || request.auth.uid == resource.data.userB);
       allow write: if false;
       match /messages/{messageId} {
-        allow read: if signedIn() && (request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userA || request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userB);
+        // Once a chat ends, neither person can read its messages again.
+        allow read: if signedIn() && get(/databases/$(database)/documents/connections/$(connectionId)).data.status == 'active' && (request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userA || request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userB);
         allow write: if false;
       }
     }

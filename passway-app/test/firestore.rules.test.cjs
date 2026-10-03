@@ -19,6 +19,8 @@ beforeEach(async () => {
       setDoc(doc(db, 'connectionRequests/req1'), { generatorId: 'alice', requesterId: 'bob', tid: 'AB12', tidCreatedAt: 1, status: 'pending' }),
       setDoc(doc(db, 'connections/chat1'), { userA: 'alice', userB: 'bob', status: 'active' }),
       setDoc(doc(db, 'connections/chat1/messages/msg1'), { content: 'Hello' }),
+      setDoc(doc(db, 'connections/old1'), { userA: 'alice', userB: 'bob', status: 'ended' }),
+      setDoc(doc(db, 'connections/old1/messages/msg1'), { content: 'Old' }),
       setDoc(doc(db, 'tids/AB12'), { generatorId: 'alice' }),
     ]);
   });
@@ -37,6 +39,7 @@ test('generator scoped pending request query is allowed', async () => { await as
 test('the old unscoped request query is denied', async () => { await assertFails(getDocs(query(collection(user(), 'connectionRequests'), where('tid', '==', 'AB12'), where('status', '==', 'pending')))); });
 test('only participants can read a request', async () => { await assertSucceeds(getDoc(doc(user('bob'), 'connectionRequests/req1'))); await assertFails(getDoc(doc(user('carol'), 'connectionRequests/req1'))); });
 test('only participants can read messages', async () => { await assertSucceeds(getDoc(doc(user('bob'), 'connections/chat1/messages/msg1'))); await assertFails(getDoc(doc(user('carol'), 'connections/chat1/messages/msg1'))); });
+test('nobody can read messages after a chat ends', async () => { await assertFails(getDoc(doc(user('bob'), 'connections/old1/messages/msg1'))); await assertFails(getDoc(doc(user('alice'), 'connections/old1/messages/msg1'))); });
 test('clients cannot write messages or connections', async () => { await assertFails(setDoc(doc(user(), 'connections/chat1/messages/msg2'), { content: 'Bypass' })); await assertFails(updateDoc(doc(user(), 'connections/chat1'), { status: 'ended' })); });
 test('clients cannot read or write temporary code documents', async () => { await assertFails(getDoc(doc(user(), 'tids/AB12'))); await assertFails(setDoc(doc(user(), 'tids/CD34'), { generatorId: 'alice' })); });
 test('clients cannot bypass report validation', async () => { await assertFails(setDoc(doc(user(), 'reports/forged'), { reporterId: 'alice', reportedId: 'carol' })); });
