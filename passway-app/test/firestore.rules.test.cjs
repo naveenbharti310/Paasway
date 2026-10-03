@@ -52,3 +52,23 @@ test('clients cannot mark their own age as confirmed or clear moderation flags',
   await assertFails(updateDoc(doc(user(), 'users/alice'), { flagCount: 0 }));
   await assertFails(setDoc(doc(user('carol'), 'users/carol'), { userId: 'carol', status: 'active', createdAt: 1, ageConfirmedAt: 1 }));
 });
+test('you can keep a private note about someone in your chat', async () => {
+  await assertSucceeds(setDoc(doc(user(), 'users/alice/notes/chat1'), { note: 'Bob from the gym', updatedAt: 1 }));
+  await assertSucceeds(getDoc(doc(user(), 'users/alice/notes/chat1')));
+  await assertSucceeds(deleteDoc(doc(user(), 'users/alice/notes/chat1')));
+});
+test('nobody else can read or write your notes', async () => {
+  await environment.withSecurityRulesDisabled(async (context) => setDoc(doc(context.firestore(), 'users/alice/notes/chat1'), { note: 'Bob from the gym', updatedAt: 1 }));
+  await assertFails(getDoc(doc(user('bob'), 'users/alice/notes/chat1')));
+  await assertFails(setDoc(doc(user('bob'), 'users/alice/notes/chat1'), { note: 'x', updatedAt: 1 }));
+});
+test('notes must be short, about your own active chat, and have no extra fields', async () => {
+  await assertFails(setDoc(doc(user(), 'users/alice/notes/chat1'), { note: 'x'.repeat(41), updatedAt: 1 }));
+  await assertFails(setDoc(doc(user(), 'users/alice/notes/chat1'), { note: '', updatedAt: 1 }));
+  await assertFails(setDoc(doc(user(), 'users/alice/notes/chat1'), { note: 'ok', updatedAt: 1, extra: true }));
+  await assertFails(setDoc(doc(user(), 'users/alice/notes/nochat'), { note: 'ok', updatedAt: 1 }));
+  await environment.withSecurityRulesDisabled(async (context) => setDoc(doc(context.firestore(), 'connections/chat2'), { userA: 'bob', userB: 'carol', status: 'active' }));
+  await assertFails(setDoc(doc(user(), 'users/alice/notes/chat2'), { note: 'ok', updatedAt: 1 }));
+  await environment.withSecurityRulesDisabled(async (context) => updateDoc(doc(context.firestore(), 'connections/chat1'), { status: 'ended' }));
+  await assertFails(setDoc(doc(user(), 'users/alice/notes/chat1'), { note: 'ok', updatedAt: 1 }));
+});

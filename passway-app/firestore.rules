@@ -20,6 +20,20 @@ service cloud.firestore {
         && resource.data.status != 'banned'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'pushToken'])
         && validProfile(request.resource.data);
+      // A private note about someone you are chatting with, seen only by you.
+      match /notes/{connectionId} {
+        function inChat() {
+          let chat = get(/databases/$(database)/documents/connections/$(connectionId)).data;
+          return chat.status == 'active' && (chat.userA == userId || chat.userB == userId);
+        }
+        allow read, delete: if signedIn() && request.auth.uid == userId;
+        allow create, update: if signedIn() && request.auth.uid == userId
+          && exists(/databases/$(database)/documents/connections/$(connectionId)) && inChat()
+          && request.resource.data.keys().hasOnly(['note', 'updatedAt'])
+          && request.resource.data.note is string
+          && request.resource.data.note.size() > 0 && request.resource.data.note.size() <= 40
+          && request.resource.data.updatedAt is number;
+      }
     }
     match /tids/{tidId} { allow read, write: if false; }
     match /connectionRequests/{requestId} {

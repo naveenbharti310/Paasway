@@ -91,6 +91,8 @@ export const deleteAccount = authedCallable(async (uid, _data, caller) => {
   }
 
   await Promise.all(['generate', 'redeem_attempt', 'message', 'safety'].map((name) => db.collection('rateLimits').doc(`${uid}_${name}`).delete()));
+  const notes = await ref.collection('notes').get();
+  await Promise.all(notes.docs.map((doc) => doc.ref.delete()));
   await ref.delete();
   try {
     await auth.deleteUser(uid);

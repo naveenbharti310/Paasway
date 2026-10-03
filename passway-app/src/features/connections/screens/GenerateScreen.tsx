@@ -11,6 +11,7 @@ import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
+import { useActiveChats } from '../../chat/api/chats';
 
 export default function GenerateScreen() {
   const navigation = useNavigation<RootNavigationProp>();
@@ -18,6 +19,7 @@ export default function GenerateScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const uid = auth.currentUser?.uid ?? '';
+  const { chats } = useActiveChats(uid);
 
   useEffect(() => {
     if (!uid) return;
@@ -50,9 +52,16 @@ export default function GenerateScreen() {
     <View style={styles.container}>
       <View style={styles.top}>
         <Text style={styles.brand}>Passway</Text>
+        <View style={styles.topRight}>
+        {chats.length > 0 && (
+          <TouchableOpacity onPress={() => navigation.navigate('Chats')} accessibilityRole="button" testID="open-chats">
+            <Text style={styles.chats}>Chats ({chats.length})</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel="Settings" testID="open-settings">
           <Text style={styles.settings}>Settings</Text>
         </TouchableOpacity>
+        </View>
       </View>
       <View style={styles.center}>
         <IconBadge glyph={'\u2318'} />
@@ -72,6 +81,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, padding: 20 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 16, borderBottomWidth: 0.5, borderBottomColor: colors.border },
   brand: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  topRight: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  chats: { fontSize: 14, color: colors.accentText, fontWeight: '500' },
   settings: { fontSize: 14, color: colors.textSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   helper: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', maxWidth: 220, lineHeight: 19 },

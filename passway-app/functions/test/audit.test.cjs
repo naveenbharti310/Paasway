@@ -356,3 +356,12 @@ test('a reply to a missing or badly named message is refused', async () => {
   await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Yes', replyTo: 'gone' }), { code: 'failed-precondition' });
   await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Yes', replyTo: '../x' }), { code: 'invalid-argument' });
 });
+
+test('ending a chat removes both private notes about it', async () => {
+  connection();
+  db.seed('users/alice/notes/chat1', { note: 'Bob from the gym', updatedAt: 1 });
+  db.seed('users/bob/notes/chat1', { note: 'Alice at the cafe', updatedAt: 1 });
+  await call(endConnection, { connectionId: 'chat1' });
+  assert.equal(db.read('users/alice/notes/chat1'), undefined);
+  assert.equal(db.read('users/bob/notes/chat1'), undefined);
+});

@@ -46,6 +46,7 @@ class MemoryFirestore {
       },
       create: (ref, data) => { writes++; if (values.has(ref.path)) throw new Error('Document already exists.'); values.set(ref.path, clone(data)); },
       set: (ref, data) => { writes++; values.set(ref.path, clone(data)); },
+      delete: (ref) => { writes++; values.delete(ref.path); },
       update: (ref, data) => { writes++; if (!values.has(ref.path)) throw new Error('Document does not exist.'); values.set(ref.path, { ...values.get(ref.path), ...clone(data) }); },
     };
     try {

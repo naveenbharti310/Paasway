@@ -19,6 +19,7 @@ import CodeScreen from '../features/connections/screens/CodeScreen';
 import EnterCodeScreen from '../features/connections/screens/EnterCodeScreen';
 import RequestScreen from '../features/connections/screens/RequestScreen';
 import ChatScreen from '../features/chat/screens/ChatScreen';
+import ChatsScreen from '../features/chat/screens/ChatsScreen';
 import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 
@@ -52,7 +53,7 @@ export default function RootNavigator() {
         let nextStage: AccountStage = 'needs_age';
         if (u) {
           nextStage = await ensureUserDoc(u.uid);
-          // Reopen a conversation that was still active when the app closed.
+          // Open the chats list if any conversation is still active.
           if (nextStage === 'ready') resume = await findActiveConnection(u.uid).catch(() => null);
         }
         if (!active || currentVersion !== version) return;
@@ -105,12 +106,13 @@ export default function RootNavigator() {
   return (
     <NavigationContainer>
       {user ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={resumeConnectionId ? 'Chat' : 'Generate'}>
+        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />
           <Stack.Screen name="Code" component={CodeScreen} />
           <Stack.Screen name="EnterCode" component={EnterCodeScreen} />
           <Stack.Screen name="Request" component={RequestScreen} />
-          <Stack.Screen name="Chat" component={ChatScreen} initialParams={resumeConnectionId ? { connectionId: resumeConnectionId } : undefined} />
+          <Stack.Screen name="Chats" component={ChatsScreen} />
+          <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="Ended" component={EndedScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>

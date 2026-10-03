@@ -26,6 +26,15 @@ export function markEnded(tx: Transaction, ref: DocumentReference, connection: D
   let deleteAt = retentionDate(connection.deleteAt, new Date(endedAt + MESSAGE_RETENTION_MS));
   if (minimumDeleteAt) deleteAt = retentionDate(deleteAt, minimumDeleteAt);
   tx.update(ref, { status: 'ended', endedBy: connection.endedBy ?? endedBy, endedAt, deleteAt, ...extra });
+  // Each person's private note about the other ("Ravi from the gym") goes
+  // when the chat ends, since the chat leaves both inboxes.
+  for (const uid of [connection.userA, connection.userB]) {
+    if (typeof uid === 'string' && uid) tx.delete(noteRef(uid, ref.id));
+  }
+}
+
+export function noteRef(uid: string, connectionId: string): DocumentReference {
+  return db.collection('users').doc(uid).collection('notes').doc(connectionId);
 }
 
 export async function endConnectionAs(ref: DocumentReference, uid: string): Promise<void> {

@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Code: { tid: string; createdAt: number; expiresAt: number };
   EnterCode: undefined;
   Request: { requestId: string; requesterName: string; requestedAt: number; tidCreatedAt: number; expiresAt: number };
+  Chats: undefined;
   Chat: { connectionId: string };
   Ended: { outcome?: EndOutcome } | undefined;
   Settings: undefined;
