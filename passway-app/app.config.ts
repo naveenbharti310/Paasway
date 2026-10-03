@@ -4,7 +4,7 @@ import { execSync } from 'child_process';
 
 // The app icon is stored as SVG artwork in assets/src. Make the PNG files
 // the build needs if they are not there yet (for example on Expo's servers).
-if (!existsSync('./assets/icon.png')) execSync('node scripts/make-icons.cjs', { stdio: 'inherit' });
+if (!existsSync('./assets/icon.png')) execSync('node scripts/make-icons.cjs', { stdio: 'ignore' });
 
 // Firebase native config files are not committed. Point these variables at
 // the files, or place them in this folder, before running a native build.
