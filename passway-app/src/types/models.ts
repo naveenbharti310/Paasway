@@ -60,6 +60,7 @@ export interface Message {
   content: string;
   sentAt: number;
   moderationFlag: ModerationFlag;
+  replyTo?: string;
 }
 
 export interface Report {

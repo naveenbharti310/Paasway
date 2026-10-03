@@ -1,6 +1,6 @@
 import { errorMessage } from '../../../services/errors';
 import { useEffect, useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, orderBy, onSnapshot, doc, limitToLast } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
@@ -26,6 +26,12 @@ const WARNINGS: Partial<Record<Message['moderationFlag'], string>> = {
   harassment_suspected: 'This message may be abusive. You can end, block or report this chat. Tap to report.',
 };
 
+function timeOf(sentAt: number): string {
+  const d = new Date(sentAt);
+  const h = d.getHours();
+  return `${h % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
+}
+
 const REPORT_REASONS = [
   'Inappropriate messages',
   'Asked for money or gifts',
@@ -48,8 +54,14 @@ export default function ChatScreen() {
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [safetyNotice, setSafetyNotice] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [actionFor, setActionFor] = useState<Message | null>(null);
   const navigatedAway = useRef(false);
   const list = useRef<FlatList<Message>>(null);
+  const input = useRef<TextInput>(null);
+  // Closing the options sheet can hand focus back to the message that was
+  // pressed, so the message box is focused again just after it closes.
+  const focusInput = () => setTimeout(() => input.current?.focus(), 250);
   const currentUserId = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
@@ -91,6 +103,9 @@ export default function ChatScreen() {
   const otherName = connection ? (otherIsA ? connection.userAName : connection.userBName) : '';
   const otherId = connection ? (otherIsA ? connection.userA : connection.userB) : '';
 
+  const byId = new Map(messages.map((m) => [m.messageId, m]));
+  const nameOf = (m: Message) => (m.senderId === currentUserId ? 'You' : otherName || 'Them');
+
   function leaveChat(outcome: EndOutcome = 'ended') {
     if (navigatedAway.current) return;
     navigatedAway.current = true;
@@ -103,8 +118,9 @@ export default function ChatScreen() {
     setSending(true);
     setError(null);
     try {
-      const result = await sendMessage({ connectionId, content: text });
+      const result = await sendMessage({ connectionId, content: text, ...(replyingTo ? { replyTo: replyingTo.messageId } : {}) });
       setDraft((current) => current.trim() === text ? '' : current);
+      setReplyingTo(null);
       if (result.earlyContactShare) setSafetyNotice(true);
     } catch (err) {
       setError(errorMessage(err, 'Your message was not sent. Try again.'));
@@ -161,7 +177,10 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.header}>
-        <Text style={styles.headerLabel}>{otherName || 'Loading'}</Text>
+        <View>
+          <Text style={styles.headerName}>{otherName || 'Loading'}</Text>
+          <Text style={styles.headerSub}>Messages disappear after 72 hours</Text>
+        </View>
         <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" testID="chat-options">
           <Text style={styles.menuGlyph}>&#8942;</Text>
         </TouchableOpacity>
@@ -177,11 +196,26 @@ export default function ChatScreen() {
         renderItem={({ item }) => {
           const mine = item.senderId === currentUserId;
           const warning = !mine ? WARNINGS[item.moderationFlag] : undefined;
+          const quoted = item.replyTo ? byId.get(item.replyTo) : undefined;
           return (
             <View style={mine ? styles.rowMine : styles.rowTheirs}>
-              <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+              <Pressable
+                onLongPress={() => setActionFor(item)}
+                delayLongPress={350}
+                accessibilityRole="button"
+                accessibilityHint="Long press to reply"
+                testID={`message-${item.messageId}`}
+                style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
+              >
+                {item.replyTo && (
+                  <View style={[styles.quote, mine ? styles.quoteMine : styles.quoteTheirs]} testID="quote">
+                    <Text style={[styles.quoteName, mine && styles.quoteTextMine]}>{quoted ? nameOf(quoted) : ''}</Text>
+                    <Text style={[styles.quoteText, mine && styles.quoteTextMine]} numberOfLines={2}>{quoted ? quoted.content : 'This message is no longer available'}</Text>
+                  </View>
+                )}
                 <Text style={mine ? styles.bubbleTextMine : styles.bubbleTextTheirs}>{item.content}</Text>
-              </View>
+                <Text style={[styles.time, mine && styles.timeMine]}>{timeOf(item.sentAt)}</Text>
+              </Pressable>
               {warning && (
                 <TouchableOpacity onPress={() => setReportVisible(true)} accessibilityRole="button" accessibilityHint="Opens the report options">
                   <Text style={styles.warning}>{warning}</Text>
@@ -190,13 +224,49 @@ export default function ChatScreen() {
             </View>
           );
         }}
+        ListEmptyComponent={<Text style={styles.empty}>Say hello. Messages disappear 72 hours after they are sent.</Text>}
       />
+      {replyingTo && (
+        <View style={styles.replyBar} testID="reply-bar">
+          <View style={styles.replyBarText}>
+            <Text style={styles.quoteName}>{`Replying to ${nameOf(replyingTo) === 'You' ? 'yourself' : nameOf(replyingTo)}`}</Text>
+            <Text style={styles.quoteText} numberOfLines={1}>{replyingTo.content}</Text>
+          </View>
+          <TouchableOpacity onPress={() => { setReplyingTo(null); focusInput(); }} accessibilityLabel="Cancel reply" testID="cancel-reply">
+            <Text style={styles.replyClose}>{'\u2715'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <View style={styles.inputRow}>
-        <TextInput testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" maxLength={2000} onSubmitEditing={handleSend} submitBehavior="submit" editable={!ending && !submitting && connection?.status === 'active'} />
-        <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message">
-          <Text style={styles.sendGlyph}>{sending ? 'Sending' : 'Send'}</Text>
+        <TextInput ref={input} testID="message-input" style={styles.input} value={draft} onChangeText={setDraft} placeholder="Message" multiline maxLength={2000} onKeyPress={Platform.OS === 'web' ? (event) => {
+            // On a computer keyboard Enter sends and Shift+Enter starts a new line.
+            const key = event.nativeEvent as unknown as { key: string; shiftKey?: boolean };
+            if (key.key === 'Enter' && !key.shiftKey) { (event as unknown as { preventDefault: () => void }).preventDefault(); void handleSend(); }
+          } : undefined} editable={!ending && !submitting && connection?.status === 'active'} />
+        <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message"
+          style={[styles.sendButton, (!draft.trim() || sending) && styles.sendButtonOff]}>
+          <Text style={styles.sendGlyph}>{sending ? '\u2026' : '\u2191'}</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal transparent visible={!!actionFor} animationType="fade" onRequestClose={() => setActionFor(null)}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setActionFor(null)}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle} numberOfLines={2}>{actionFor?.content}</Text>
+            <TouchableOpacity style={styles.sheetRow} testID="reply-action" onPress={() => { setReplyingTo(actionFor); setActionFor(null); focusInput(); }}>
+              <Text style={styles.sheetRowText}>Reply</Text>
+            </TouchableOpacity>
+            {actionFor && actionFor.senderId !== currentUserId && (
+              <TouchableOpacity style={styles.sheetRow} onPress={() => { setActionFor(null); setReportVisible(true); }}>
+                <Text style={styles.sheetRowDanger}>Report</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.sheetRow} onPress={() => setActionFor(null)}>
+              <Text style={styles.sheetRowMuted}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMenuVisible(false)}>
@@ -251,17 +321,32 @@ const styles = StyleSheet.create({
   error: { fontSize: 12, color: colors.danger, paddingVertical: 8 },
   notice: { fontSize: 12, color: colors.textSecondary, paddingVertical: 8 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: colors.border },
-  headerLabel: { fontSize: 13, color: colors.textSecondary },
   menuGlyph: { fontSize: 18, color: colors.textSecondary, fontWeight: '700' },
   list: { paddingVertical: 12, gap: 8 },
-  bubble: { maxWidth: '78%', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, marginBottom: 8 },
-  bubbleTheirs: { backgroundColor: colors.surface, alignSelf: 'flex-start' },
-  bubbleMine: { backgroundColor: colors.accentFill, alignSelf: 'flex-end' },
-  bubbleTextTheirs: { fontSize: 13, color: colors.textPrimary },
-  bubbleTextMine: { fontSize: 13, color: colors.onAccent },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8 },
-  input: { flex: 1, borderWidth: 0.5, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  sendGlyph: { fontSize: 13, color: colors.accentText, fontWeight: '600' },
+  bubble: { maxWidth: '80%', paddingTop: 8, paddingBottom: 6, paddingHorizontal: 12, borderRadius: 16, marginBottom: 4 },
+  bubbleTheirs: { backgroundColor: colors.surface, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  bubbleMine: { backgroundColor: colors.accentFill, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+  bubbleTextTheirs: { fontSize: 15, lineHeight: 20, color: colors.textPrimary },
+  bubbleTextMine: { fontSize: 15, lineHeight: 20, color: colors.onAccent },
+  time: { fontSize: 10, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 2 },
+  timeMine: { color: colors.onAccent, opacity: 0.75 },
+  quote: { borderLeftWidth: 3, borderRadius: 6, paddingVertical: 4, paddingHorizontal: 8, marginBottom: 6 },
+  quoteTheirs: { borderLeftColor: colors.accentFill, backgroundColor: 'rgba(0,0,0,0.05)' },
+  quoteMine: { borderLeftColor: colors.onAccent, backgroundColor: 'rgba(255,255,255,0.18)' },
+  quoteName: { fontSize: 12, fontWeight: '600', color: colors.accentText },
+  quoteText: { fontSize: 13, color: colors.textSecondary },
+  quoteTextMine: { color: colors.onAccent },
+  replyBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderLeftWidth: 3, borderLeftColor: colors.accentFill, backgroundColor: colors.surface, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, marginTop: 6 },
+  replyBarText: { flex: 1 },
+  replyClose: { fontSize: 16, color: colors.textSecondary, padding: 4 },
+  empty: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginTop: 40 },
+  headerName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  headerSub: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingTop: 8 },
+  input: { flex: 1, borderWidth: 0.5, borderColor: colors.border, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, maxHeight: 120, color: colors.textPrimary },
+  sendButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
+  sendButtonOff: { opacity: 0.4 },
+  sendGlyph: { fontSize: 18, color: colors.onAccent },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, paddingHorizontal: 4 },
   sheetTitle: { fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingVertical: 10 },

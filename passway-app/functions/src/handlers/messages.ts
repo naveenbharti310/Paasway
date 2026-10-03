@@ -13,6 +13,9 @@ const ENDED = 'This connection has ended.';
 export const sendMessage = authedCallable(async (uid, data) => {
   const connectionId = documentId(data.connectionId, 'Connection');
   const content = text(data.content, 'Message', MAX_MESSAGE_LENGTH);
+  // A reply only stores the ID of the earlier message, never a copy of its
+  // text, so the quoted words are still deleted on the original's schedule.
+  const replyTo = data.replyTo === undefined || data.replyTo === null ? undefined : documentId(data.replyTo, 'Reply');
   const ref = db.collection('connections').doc(connectionId);
   const initial = await ref.get();
   const initialData = initial.data();
@@ -28,10 +31,17 @@ export const sendMessage = authedCallable(async (uid, data) => {
     if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const recipient = otherParticipant(connection as Participants, uid);
     await assertAccountActive(recipient, tx);
+    if (replyTo) {
+      const quoted = await tx.get(ref.collection('messages').doc(replyTo));
+      const deleteAt = quoted.data()?.deleteAt as { toMillis?: () => number } | undefined;
+      if (!quoted.exists || (deleteAt?.toMillis && deleteAt.toMillis() <= Date.now())) {
+        throw new HttpsError('failed-precondition', 'The message you replied to is no longer available.');
+      }
+    }
     const sentAt = Date.now();
     // Every message carries its own expiry from the moment it is written, so
     // retention holds even if a connection is never ended.
-    tx.create(messageRef, { messageId: messageRef.id, connectionId, senderId: uid, content, sentAt, moderationFlag: result.flag, deleteAt: new Date(sentAt + MESSAGE_RETENTION_MS) });
+    tx.create(messageRef, { messageId: messageRef.id, connectionId, senderId: uid, content, sentAt, moderationFlag: result.flag, deleteAt: new Date(sentAt + MESSAGE_RETENTION_MS), ...(replyTo ? { replyTo } : {}) });
     tx.update(ref, { lastActivityAt: sentAt });
     if (result.flag !== 'none') {
       // Repeated flagged messages put the sender in the review queue, the

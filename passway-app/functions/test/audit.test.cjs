@@ -341,3 +341,18 @@ test('rules catch common scam and abuse messages and leave normal ones alone', a
   for (const text of abuse) assert.equal((await screenMessage(text, 9999)).flag, 'harassment_suspected', text);
   for (const text of normal) assert.equal((await screenMessage(text, 9999)).flag, 'none', text);
 });
+
+test('a reply stores only the ID of the earlier message', async () => {
+  connection();
+  db.seed('connections/chat1/messages/m1', { messageId: 'm1', senderId: other, content: 'Coffee at 5?', sentAt: Date.now() });
+  await call(sendMessage, { connectionId: 'chat1', content: 'Yes!', replyTo: 'm1' });
+  const reply = [...db.values.values()].find((value) => value.content === 'Yes!');
+  assert.equal(reply.replyTo, 'm1');
+  assert.equal(JSON.stringify(reply).includes('Coffee'), false);
+});
+
+test('a reply to a missing or badly named message is refused', async () => {
+  connection();
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Yes', replyTo: 'gone' }), { code: 'failed-precondition' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Yes', replyTo: '../x' }), { code: 'invalid-argument' });
+});
