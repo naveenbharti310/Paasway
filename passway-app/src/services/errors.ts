@@ -24,13 +24,16 @@ export function errorCode(error: unknown): string {
 
 const TRANSPORT = new Set(['network-request-failed', 'unavailable', 'deadline-exceeded', 'internal', 'unknown']);
 
+// The web SDK adds the HTTP status to the end, for example "... [404]".
+const clean = (message: string) => message.replace(/^\[[^\]]+\]\s*/, '').replace(/\s*\[\d{3}\]$/, '');
+
 export function errorMessage(error: unknown, fallback: string): string {
   const code = errorCode(error);
   const raw = error && typeof error === 'object' && 'code' in error ? String((error as { code: unknown }).code) : '';
   // Cloud Functions send messages written for people, so those are shown as is.
-  if (raw.startsWith('functions/') && !TRANSPORT.has(code) && error instanceof Error && error.message) return error.message.replace(/^\[[^\]]+\]\s*/, '');
+  if (raw.startsWith('functions/') && !TRANSPORT.has(code) && error instanceof Error && error.message) return clean(error.message);
   if (MESSAGES[code]) return MESSAGES[code];
   if (code === 'internal' || code === 'unknown') return fallback;
-  if (error instanceof Error && error.message) return error.message.replace(/^\[[^\]]+\]\s*/, '');
+  if (error instanceof Error && error.message) return clean(error.message);
   return fallback;
 }
