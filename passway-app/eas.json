@@ -23,7 +23,8 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://passway-api.vercel.app",
-        "EXPO_PUBLIC_APP_CHECK": "off"
+        "EXPO_PUBLIC_APP_CHECK": "off",
+        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "1"
       }
     },
     "production": {

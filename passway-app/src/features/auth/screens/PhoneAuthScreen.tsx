@@ -62,6 +62,9 @@ export default function PhoneAuthScreen() {
         {!confirmation ? (
           <>
             <Text style={styles.helper}>Verify your number to get started. It is never shown to anyone you connect with.</Text>
+            {process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
+              <Text style={styles.helper} testID="test-numbers">{'Trying the preview? Use +91 99999 00001 or +91 99999 00002 with the code 123456.'}</Text>
+            )}
             <LabeledField label="phone number" placeholder="+91 98765 43210" keyboardType="phone-pad" testID="phone-input" value={phone} onChangeText={setPhone} />
             {error && <Text style={styles.error}>{error}</Text>}
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
