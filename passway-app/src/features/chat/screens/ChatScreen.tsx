@@ -243,7 +243,7 @@ export default function ChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Chats' }] })} accessibilityRole="button" accessibilityLabel="Back to chats" testID="chat-back" style={styles.back}>
           <Icon name="back" size={26} color={colors.textPrimary} />
@@ -306,7 +306,7 @@ export default function ChatScreen() {
       </View>
 
       <Modal transparent visible={noteVisible} animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setNoteVisible(false)}>
-        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0}>
           <View style={[styles.sheet, styles.noteSheet, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
             <View style={styles.grabber} />
             <Text style={styles.noteTitle}>{`A note about ${otherName}`}</Text>
