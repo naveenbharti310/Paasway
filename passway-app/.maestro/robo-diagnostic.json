@@ -413,12 +413,15 @@
         "delayTime": 15000
       },
       {
-        "eventType": "VIEW_CLICKED",
-        "elementDescriptors": [
-          {
-            "text": "Synthetic peer acknowledgement"
-          }
-        ]
+        "eventType": "ASSERTION",
+        "contextDescriptor": {
+          "condition": "element_present",
+          "elementDescriptors": [
+            {
+              "text": "Synthetic peer acknowledgement"
+            }
+          ]
+        }
       },
       {
         "eventType": "PRESSED_BACK",
