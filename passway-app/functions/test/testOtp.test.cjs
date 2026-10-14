@@ -118,3 +118,10 @@ test('OTP routes enforce App Check when enabled on the server', async () => {
   assert.equal(calls.length, 0);
   process.env.ENFORCE_APP_CHECK = 'false';
 });
+test('fictional diagnostic numbers never call the real SMS provider', async () => {
+  for (const p of ['+919999900001', '+919999900002']) {
+    assert.equal((await req('otpSend', { phone: p })).status, 400);
+    assert.equal((await req('testOtpSend', { phone: p })).status, 400);
+  }
+  assert.equal(calls.length, 0);
+});

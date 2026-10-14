@@ -43,6 +43,12 @@ function clientIp(request: Request): string {
 
 async function send(phone: unknown, request: Request) {
   if (typeof phone !== 'string' || !/^\+91[6-9]\d{9}$/.test(phone)) throw new HttpsError('invalid-argument', 'Enter a 10 digit Indian mobile number.');
+  // These are configured as fictional Firebase accounts for this project.
+  // A stale Play test script must never send real 2Factor SMS to them when
+  // a later, non-diagnostic build is uploaded.
+  if (['+919999900001', '+919999900002'].includes(phone)) {
+    throw new HttpsError('invalid-argument', 'This number is reserved for automated diagnostics. No SMS was sent.');
+  }
   const now = Date.now(), day = Math.floor(now / DAY), hour = Math.floor(now / 3600000);
   const phoneRef = ref(`phone_${hash(phone)}`), ipRef = ref(`ip_${hash(clientIp(request))}`), globalRef = ref('daily');
   const challengeId = randomUUID();
