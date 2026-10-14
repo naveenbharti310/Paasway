@@ -1,15 +1,25 @@
-// Only the family-test Vercel server enables these routes. Not exported as
-// Firebase callables. The public-release app uses Firebase Phone Auth instead.
+// Server-side 2Factor OTP for testing and release builds. Not exported as
+// Firebase callables. Legacy testOtp route names remain for installed test APKs.
 import { createHash, randomUUID } from 'node:crypto';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { auth, db } from '../lib/firebase';
 import { Timestamp } from 'firebase-admin/firestore';
+import { checkAppCheck } from './server';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const ref = (id: string) => db.collection('rateLimits').doc(`testOtp_${id}`);
 const fail = (message: string) => new HttpsError('resource-exhausted', message);
 const expired = () => new HttpsError('failed-precondition', 'This code has expired or was already used. Request a new one.');
 const DAY = 86400000;
+
+function dailyLimit(): number {
+  const value = process.env.TWOFACTOR_DAILY_LIMIT ?? '200';
+  const limit = Number(value);
+  if (!/^[1-9]\d{0,3}$/.test(value) || limit > 5000) {
+    throw new HttpsError('failed-precondition', 'SMS safety settings need attention. Please try again later.');
+  }
+  return limit;
+}
 
 async function provider(parts: string[]): Promise<{ Status?: string; Details?: string }> {
   // Never log the URL, errors, or response: the key and OTP are URL segments.
@@ -45,9 +55,9 @@ async function send(phone: unknown, request: Request) {
     const pc = pd?.day === day ? pd.count : 0;
     const ic = id?.hour === hour ? id.count : 0;
     const gc = gd?.day === day ? gd.count : 0;
-    if (pc >= 5) throw fail('This number has reached today’s test SMS limit. Try tomorrow.');
-    if (ic >= 20) throw fail('Too many test messages from this connection. Try again in an hour.');
-    if (gc >= 50) throw fail('Today’s family-testing SMS limit has been reached. Try tomorrow.');
+    if (pc >= 5) throw fail('This number has reached today’s SMS limit. Try tomorrow.');
+    if (ic >= 20) throw fail('Too many messages from this connection. Try again in an hour.');
+    if (gc >= dailyLimit()) throw fail('Today’s SMS safety limit has been reached. Try tomorrow.');
     tx.set(phoneRef, { day, count: pc + 1, sentAt: now, challengeId, deleteAt: Timestamp.fromMillis(now + 2 * DAY) });
     tx.set(ipRef, { hour, count: ic + 1, deleteAt: Timestamp.fromMillis(now + 2 * DAY) });
     tx.set(globalRef, { day, count: gc + 1 });
@@ -102,9 +112,12 @@ async function verify(challengeId: unknown, code: unknown) {
 
 export async function handleTestOtp(request: Request, name: string): Promise<Response> {
   const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
-  if (process.env.TWOFACTOR_TEST_ENABLED !== 'true' || !process.env.TWOFACTOR_API_KEY) return respond(404, { error: { status: 'NOT_FOUND', message: 'Test SMS login is not enabled.' } });
+  const legacy = ['testOtpSend', 'testOtpVerify'].includes(name);
+  const enabled = process.env.TWOFACTOR_ENABLED === 'true' || (legacy && process.env.TWOFACTOR_TEST_ENABLED === 'true');
+  if ((!legacy && !['otpSend', 'otpVerify'].includes(name)) || !enabled || !process.env.TWOFACTOR_API_KEY) return respond(404, { error: { status: 'NOT_FOUND', message: 'SMS login is not enabled.' } });
   if (request.method !== 'POST') return respond(405, { error: { message: 'Use POST.' } });
   try {
+    await checkAppCheck(request);
     const origin = request.headers.get('origin');
     if (origin && !(process.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).includes(origin)) throw new HttpsError('permission-denied', 'This website is not allowed.');
     const text = await request.text();
@@ -112,11 +125,11 @@ export async function handleTestOtp(request: Request, name: string): Promise<Res
     let data;
     try { data = JSON.parse(text); } catch { throw new HttpsError('invalid-argument', 'Request data is required.'); }
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new HttpsError('invalid-argument', 'Request data is required.');
-    const result = name === 'testOtpSend' ? await send(data.phone, request) : await verify(data.challengeId, data.code);
+    const result = ['otpSend', 'testOtpSend'].includes(name) ? await send(data.phone, request) : await verify(data.challengeId, data.code);
     return respond(200, { result });
   } catch (error) {
     // Provider exceptions must never reach logs or client responses.
     if (error instanceof HttpsError) return respond(error.httpErrorCode.status, { error: error.toJSON() });
-    return respond(500, { error: { status: 'INTERNAL', message: 'Could not complete test sign-in. Request a new code and try again.' } });
+    return respond(500, { error: { status: 'INTERNAL', message: 'Could not complete sign-in. Request a new code and try again.' } });
   }
 }

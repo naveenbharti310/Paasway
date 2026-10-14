@@ -8,6 +8,7 @@ import { initializeAppCheck, ReactNativeFirebaseAppCheckProvider } from '@react-
 export const FUNCTIONS_REGION = 'asia-south1';
 
 const app = getApp();
+export let appCheck: ReturnType<typeof initializeAppCheck> | undefined;
 
 // App Check proves calls come from a genuine install of this app. Debug builds
 // use a debug token registered in the Firebase console. Play Integrity only
@@ -20,7 +21,7 @@ if (process.env.EXPO_PUBLIC_APP_CHECK !== 'off') {
     android: { provider: __DEV__ ? 'debug' : 'playIntegrity', debugToken },
     apple: { provider: __DEV__ ? 'debug' : 'appAttestWithDeviceCheckFallback', debugToken },
   });
-  initializeAppCheck(app, { provider: appCheckProvider, isTokenAutoRefreshEnabled: true });
+  appCheck = initializeAppCheck(app, { provider: appCheckProvider, isTokenAutoRefreshEnabled: true });
 }
 
 export const auth = getAuth(app);

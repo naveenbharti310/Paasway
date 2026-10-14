@@ -5,7 +5,7 @@ import FormScreen from '../../../components/FormScreen';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../../../navigation/types';
-import { beginPhoneSignIn, usesTestSms, type PhoneConfirmation } from '../api/phoneAuth';
+import { beginPhoneSignIn, usesTwoFactorSms, type PhoneConfirmation } from '../api/phoneAuth';
 import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
@@ -39,7 +39,7 @@ export default function PhoneAuthScreen() {
     setLoading(true);
     setError(null);
     try {
-      // Test builds use server-side 2Factor; public builds use Firebase SMS.
+      // 2Factor verifies server-side; Firebase SMS remains available by build setting.
       const result = await beginPhoneSignIn(number);
       setConfirmation(result);
     } catch (err: unknown) {
@@ -75,7 +75,7 @@ export default function PhoneAuthScreen() {
           <>
             <Text style={styles.title} accessibilityRole="header">Your phone number</Text>
             <Text style={styles.helper}>Used only to sign in. It is never shown to anyone you connect with.</Text>
-            {!usesTestSms && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
+            {!usesTwoFactorSms && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
               <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use 99999 00001 or 99999 00002 with the code 123456.'}</Text>
             )}
             <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />

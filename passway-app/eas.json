@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 12.0.0"
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -34,12 +35,32 @@
       "autoIncrement": true,
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_OTP_PROVIDER": "firebase",
+        "EXPO_PUBLIC_OTP_PROVIDER": "2factor",
+        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0",
+        "EXPO_PUBLIC_API_URL": "https://passway-api.vercel.app"
+      }
+    },
+    "play-testing": {
+      "extends": "production",
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_OTP_PROVIDER": "2factor",
+        "EXPO_PUBLIC_API_URL": "https://passway-api.vercel.app",
+        "EXPO_PUBLIC_APP_CHECK": "off",
         "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "play-testing": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

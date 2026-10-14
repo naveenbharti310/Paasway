@@ -36,7 +36,7 @@ async function verifiedAuth(request: Request) {
   }
 }
 
-async function checkAppCheck(request: Request): Promise<void> {
+export async function checkAppCheck(request: Request): Promise<void> {
   if (process.env.ENFORCE_APP_CHECK === 'false') return;
   const token = request.headers.get('x-firebase-appcheck');
   if (!token) throw new HttpsError('unauthenticated', 'This app could not be verified.');

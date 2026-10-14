@@ -9,6 +9,8 @@ const req = (name, data, headers = {}) => handleTestOtp(new Request(`https://tes
 const phone = '+919876543210';
 beforeEach(() => {
   now = originalNow(); Date.now = () => now;
+  process.env.ENFORCE_APP_CHECK = 'false';
+  process.env.TWOFACTOR_ENABLED = 'true'; process.env.TWOFACTOR_DAILY_LIMIT = '50';
   process.env.TWOFACTOR_TEST_ENABLED = 'true'; process.env.TWOFACTOR_API_KEY = 'SECRET_TEST_ONLY';
   process.env.TWOFACTOR_TEMPLATE_NAME = 'PASSWAY_OTP_2';
   process.env.ALLOWED_ORIGINS = 'https://preview.test';
@@ -22,7 +24,7 @@ after(() => { global.fetch = originalFetch; Date.now = originalNow; });
 async function send(p = phone, headers = {}) { const r = await req('testOtpSend', { phone: p }, headers); assert.equal(r.status, 200, JSON.stringify(await r.clone().json())); return (await r.json()).result.challengeId; }
 
 test('disabled or missing key never contacts provider', async () => {
-  process.env.TWOFACTOR_TEST_ENABLED = 'false'; assert.equal((await req('testOtpSend', { phone })).status, 404);
+  process.env.TWOFACTOR_ENABLED = 'false'; process.env.TWOFACTOR_TEST_ENABLED = 'false'; assert.equal((await req('testOtpSend', { phone })).status, 404);
   process.env.TWOFACTOR_TEST_ENABLED = 'true'; delete process.env.TWOFACTOR_API_KEY;
   assert.equal((await req('testOtpSend', { phone })).status, 404); assert.equal(calls.length, 0);
 });
@@ -90,4 +92,29 @@ test('provider errors do not leak keys and do not fall back to Firebase SMS', as
 test('disabled Firebase users cannot receive custom tokens', async () => {
   users.set(phone, { uid: 'disabled-user', disabled: true }); const id = await send();
   assert.equal((await req('testOtpVerify', { challengeId: id, code: '123456' })).status, 403); assert.equal(tokens.length, 0);
+});
+
+test('release routes use explicit enable switch; legacy-only switch cannot enable release routes', async () => {
+  assert.equal((await req('otpSend', { phone })).status, 200);
+  process.env.TWOFACTOR_ENABLED = 'false';
+  assert.equal((await req('otpSend', { phone: '+919876543211' })).status, 404);
+  assert.equal((await req('otpVerify', {})).status, 404);
+  assert.equal((await req('unknown', {})).status, 404);
+});
+test('daily budget is configurable and invalid safety settings fail closed', async () => {
+  process.env.TWOFACTOR_DAILY_LIMIT = '2';
+  await send(); await send('+919876543211');
+  assert.equal((await req('otpSend', { phone: '+919876543212' })).status, 429);
+  for (const invalid of ['0', '-1', 'unlimited', '5001', '1.5']) {
+    process.env.TWOFACTOR_DAILY_LIMIT = invalid;
+    assert.equal((await req('otpSend', { phone: '+919876543213' })).status, 400);
+  }
+  assert.equal(calls.length, 2);
+});
+
+test('OTP routes enforce App Check when enabled on the server', async () => {
+  process.env.ENFORCE_APP_CHECK = 'true';
+  assert.equal((await req('otpSend', { phone })).status, 401);
+  assert.equal(calls.length, 0);
+  process.env.ENFORCE_APP_CHECK = 'false';
 });

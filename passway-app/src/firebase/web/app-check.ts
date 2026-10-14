@@ -6,3 +6,5 @@ export class ReactNativeFirebaseAppCheckProvider {
 }
 
 export function initializeAppCheck(_app: unknown, _options: unknown): void {}
+
+export async function getToken(_app: unknown): Promise<{ token: string }> { throw new Error("App Check must be disabled in the web preview."); }
