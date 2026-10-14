@@ -1,7 +1,7 @@
 [
   {
     "id": 1000,
-    "description": "Passway native startup, input validation, fictional login, synthetic chat, keyboard and code-input smoke checks",
+    "description": "Passway native startup, input validation, fictional login, synthetic chat, keyboard, code input, native request acceptance and controlled API-peer acknowledgement checks",
     "actions": [
       {
         "eventType": "DELAYED_MESSAGE_POSTED",
@@ -341,7 +341,94 @@
         "eventType": "VIEW_CLICKED",
         "elementDescriptors": [
           {
-            "resourceIdRegex": "(?:.*:id/)?open-settings"
+            "resourceIdRegex": "(?:.*:id/)?generate"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 2000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "optional": true,
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": ".*permission_allow_foreground_only_button$"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 60000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?accept"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 5000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?message-input"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?message-input"
+          }
+        ],
+        "replacementText": "Synthetic newly paired chat message"
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?send-message"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 15000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "text": "Synthetic peer acknowledgement"
+          }
+        ]
+      },
+      {
+        "eventType": "PRESSED_BACK",
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?chat-back"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?chats-settings"
           }
         ],
         "optional": true
