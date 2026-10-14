@@ -17,6 +17,11 @@ const googleServicesPlist = process.env.GOOGLE_SERVICES_PLIST ?? './GoogleServic
 const easProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || 'd21f83c5-5e34-4a1c-9dea-346885668a27';
 const easOwner = process.env.EXPO_PUBLIC_EAS_PROJECT_ID ? undefined : 'naveenbharti310s-team';
 
+// A release build must never ship the family-test SMS provider.
+if (process.env.EAS_BUILD_PROFILE === 'production' && process.env.EXPO_PUBLIC_OTP_PROVIDER === '2factor') {
+  throw new Error('Production builds must use Firebase Phone Auth, not the test SMS provider.');
+}
+
 const config: ExpoConfig = {
   name: 'Passway',
   slug: 'passway',

@@ -9,7 +9,9 @@
       "environment": "development",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://passway-api.vercel.app",
-        "EXPO_PUBLIC_APP_CHECK": "off"
+        "EXPO_PUBLIC_APP_CHECK": "off",
+        "EXPO_PUBLIC_OTP_PROVIDER": "2factor",
+        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0"
       }
     },
     "preview": {
@@ -24,12 +26,17 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://passway-api.vercel.app",
         "EXPO_PUBLIC_APP_CHECK": "off",
-        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "1"
+        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0",
+        "EXPO_PUBLIC_OTP_PROVIDER": "2factor"
       }
     },
     "production": {
       "autoIncrement": true,
-      "environment": "production"
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_OTP_PROVIDER": "firebase",
+        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0"
+      }
     }
   },
   "submit": {

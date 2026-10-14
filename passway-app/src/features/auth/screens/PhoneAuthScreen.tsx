@@ -5,8 +5,7 @@ import FormScreen from '../../../components/FormScreen';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AuthStackParamList } from '../../../navigation/types';
-import { signInWithPhoneNumber, type ConfirmationResult } from '@react-native-firebase/auth';
-import { auth } from '../../../firebase/client';
+import { beginPhoneSignIn, usesTestSms, type PhoneConfirmation } from '../api/phoneAuth';
 import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
@@ -26,7 +25,7 @@ export default function PhoneAuthScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
-  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
+  const [confirmation, setConfirmation] = useState<PhoneConfirmation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,9 +39,8 @@ export default function PhoneAuthScreen() {
     setLoading(true);
     setError(null);
     try {
-      // The native SDK verifies the device with Play Integrity or silent APNs
-      // and falls back to a reCAPTCHA page only when that is not possible.
-      const result = await signInWithPhoneNumber(auth, number);
+      // Test builds use server-side 2Factor; public builds use Firebase SMS.
+      const result = await beginPhoneSignIn(number);
       setConfirmation(result);
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not send a code. Check the number and try again.'));
@@ -77,7 +75,7 @@ export default function PhoneAuthScreen() {
           <>
             <Text style={styles.title} accessibilityRole="header">Your phone number</Text>
             <Text style={styles.helper}>Used only to sign in. It is never shown to anyone you connect with.</Text>
-            {process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
+            {!usesTestSms && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
               <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use 99999 00001 or 99999 00002 with the code 123456.'}</Text>
             )}
             <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />

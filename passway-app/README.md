@@ -112,3 +112,12 @@ See [architecture](../docs/architecture.md) and [code organisation](../docs/code
 10. Deleting an account removes the profile and sign in. A reported or banned phone number keeps a hold so it cannot start over.
 
 Never commit service account keys, Firebase config files, access tokens or signing keys.
+
+## Family-testing SMS versus public-release SMS
+
+- Internal EAS `development` and `preview` builds and `scripts/web-preview.sh` explicitly set `EXPO_PUBLIC_OTP_PROVIDER=2factor`. The public `production` profile explicitly uses `firebase`; a config guard rejects production builds selecting 2Factor. Unset providers default to Firebase. There is no automatic fallback between providers.
+- The test-only Vercel API needs server variables `TWOFACTOR_API_KEY` (sensitive), `TWOFACTOR_TEST_ENABLED=true`, and `TWOFACTOR_TEMPLATE_NAME=PASSWAY_OTP_2`. Never use an `EXPO_PUBLIC_` prefix for the API key. Only enable these routes on the family-test server.
+- SMS send/verify runs server-side; clients get an opaque single-use challenge, then a Firebase custom token after verified OTP. Existing Firebase users are resolved by verified phone number, preserving their UID for future Firebase SMS login. New users are created with that phone number.
+- Limits: 60 seconds between sends; five sends per number per UTC day; twenty sends per IP per UTC hour; fifty sends globally per UTC day. Failed sends also reserve budget. Codes expire locally after five minutes, allow five attempts, are invalidated by resends, and cannot be replayed. Provider URLs, OTPs and keys must never be logged. Expired private test records use the existing `deleteAt` cleanup sweep.
+- Existing installed APKs do not change when the backend redeploys: build/install a new `preview` APK for 2Factor. Public release uses Firebase Phone Auth, its own SMS billing, and normal Firebase device-verification setup. Before public release disable the test routes (`TWOFACTOR_TEST_ENABLED=false`) and redeploy, or leave them only on a separate test server.
+- The current test build still uses the existing Firebase project for accounts and app data. SMS-provider separation is not database/project isolation; provision a separate Firebase test project if strict test/production data separation is required.

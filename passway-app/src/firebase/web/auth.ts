@@ -1,6 +1,6 @@
 import { RecaptchaVerifier, signInWithPhoneNumber as webSignIn, type Auth, type ConfirmationResult } from 'firebase/auth';
 
-export { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
+export { getAuth, onAuthStateChanged, signOut, signInWithCustomToken } from 'firebase/auth';
 export type { ConfirmationResult, User } from 'firebase/auth';
 
 let verifier: RecaptchaVerifier | undefined;
