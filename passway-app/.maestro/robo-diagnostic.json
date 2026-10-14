@@ -127,6 +127,15 @@
         "delayTime": 20000
       },
       {
+        "eventType": "VIEW_CLICKED",
+        "optional": true,
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": ".*permission_allow_button$"
+          }
+        ]
+      },
+      {
         "eventType": "VIEW_TEXT_CHANGED",
         "elementDescriptors": [
           {
