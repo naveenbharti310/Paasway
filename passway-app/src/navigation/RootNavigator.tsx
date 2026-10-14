@@ -12,7 +12,7 @@ import WelcomeScreen from '../features/onboarding/screens/WelcomeScreen';
 import AgeCheckScreen from '../features/onboarding/screens/AgeCheckScreen';
 import UnderAgeScreen from '../features/onboarding/screens/UnderAgeScreen';
 import SettingsScreen from '../features/settings/screens/SettingsScreen';
-import { registerForPush } from '../services/notifications';
+import { registerForPush, refreshPushToken } from '../services/notifications';
 import PhoneAuthScreen from '../features/auth/screens/PhoneAuthScreen';
 import GenerateScreen from '../features/connections/screens/GenerateScreen';
 import CodeScreen from '../features/connections/screens/CodeScreen';
@@ -73,7 +73,9 @@ export default function RootNavigator() {
         if (u && Platform.OS !== 'web') {
           const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
           void refreshPush();
-          pushListener = Notifications.addPushTokenListener(() => void refreshPush());
+          pushListener = Notifications.addPushTokenListener((token) => {
+            void refreshPushToken(u.uid, token).catch(() => console.warn('Notification token refresh could not be completed.'));
+          });
         }
       } catch (err) {
         if (!active || currentVersion !== version) return;

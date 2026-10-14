@@ -3,16 +3,28 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { doc, updateDoc } from '@react-native-firebase/firestore';
 import { db } from '../firebase/client';
+import { createPushRegistration } from './pushRegistration';
 
-export async function registerForPush(uid: string): Promise<void> {
-  if (Platform.OS === 'web') return;
-  const projectId = (Constants.expoConfig?.extra?.eas as { projectId?: string } | undefined)?.projectId;
-  if (!projectId) return;
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', { name: 'Connections', importance: Notifications.AndroidImportance.DEFAULT });
-  }
-  const { status } = await Notifications.requestPermissionsAsync();
-  if (status !== 'granted') return;
-  const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-  await updateDoc(doc(db, 'users', uid), { pushToken: token });
-}
+const projectId = (Constants.expoConfig?.extra?.eas as { projectId?: string } | undefined)?.projectId;
+const registration = createPushRegistration<Notifications.DevicePushToken>({
+  async prepare() {
+    if (Platform.OS === 'web' || !projectId) return false;
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', { name: 'Connections', importance: Notifications.AndroidImportance.DEFAULT });
+    }
+    const permission = await Notifications.getPermissionsAsync();
+    if (permission.status === 'granted') return true;
+    if (!permission.canAskAgain) return false;
+    return (await Notifications.requestPermissionsAsync()).status === 'granted';
+  },
+  async hasPermission() {
+    return Platform.OS !== 'web' && !!projectId && (await Notifications.getPermissionsAsync()).status === 'granted';
+  },
+  async getExpoToken(devicePushToken) {
+    return (await Notifications.getExpoPushTokenAsync({ projectId, ...(devicePushToken ? { devicePushToken } : {}) })).data;
+  },
+  async save(uid, pushToken) { await updateDoc(doc(db, 'users', uid), { pushToken }); },
+});
+
+export const registerForPush = registration.register;
+export const refreshPushToken = registration.refresh;
