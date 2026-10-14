@@ -23,6 +23,9 @@ const otpProvider = process.env.EXPO_PUBLIC_OTP_PROVIDER;
 if (otpProvider && !['firebase', '2factor'].includes(otpProvider)) {
   throw new Error('EXPO_PUBLIC_OTP_PROVIDER must be firebase or 2factor.');
 }
+if (process.env.EXPO_PUBLIC_DIAGNOSTICS === '1' && process.env.EAS_BUILD_PROFILE !== 'play-diagnostics') {
+  throw new Error('Diagnostics and fictional test login are restricted to the play-diagnostics build profile.');
+}
 
 const config: ExpoConfig = {
   name: 'Passway',
@@ -50,10 +53,12 @@ const config: ExpoConfig = {
     '@react-native-firebase/app',
     '@react-native-firebase/auth',
     '@react-native-firebase/app-check',
+    '@react-native-firebase/crashlytics',
     ['expo-build-properties', { ios: { useFrameworks: 'static' } }],
     ['expo-location', { locationWhenInUsePermission: 'Passway checks that you are near the person you are connecting with. Your exact location is never shared.' }],
     'expo-notifications',
     './plugins/withFirebaseNoSpm',
+    './plugins/withTestLabDetection',
     ['expo-splash-screen', { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 96 }],
     ['expo-system-ui'],
   ],

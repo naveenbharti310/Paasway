@@ -12,6 +12,7 @@ const webShims = {
   '@react-native-firebase/auth': 'auth.ts',
   '@react-native-firebase/firestore': 'firestore.ts',
   '@react-native-firebase/functions': 'functions.ts',
+  '@react-native-firebase/crashlytics': 'crashlytics.ts',
 };
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {

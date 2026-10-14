@@ -1,7 +1,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
-import { assertAccountActive } from '../lib/accounts';
+import { assertAccountActive, assertSameTestCohort } from '../lib/accounts';
 import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { randomTid } from '../lib/tid';
@@ -45,12 +45,13 @@ export const redeemTid = authedCallable(async (uid, data) => {
   const tidRef = db.collection('tids').doc(tid);
   const requestRef = db.collection('connectionRequests').doc();
   const result = await db.runTransaction(async (tx) => {
-    await assertAccountActive(uid, tx);
+    const requester = await assertAccountActive(uid, tx);
     const snap = await tx.get(tidRef);
     const code = snap.data();
     if (!snap.exists || code?.status !== 'active' || code.expiresAt <= Date.now()) throw new HttpsError('not-found', INACTIVE_CODE);
     if (code.generatorId === uid) throw new HttpsError('invalid-argument', 'You cannot use your own code.');
-    await assertAccountActive(code.generatorId, tx);
+    const generator = await assertAccountActive(code.generatorId, tx);
+    assertSameTestCohort(requester, generator);
     await assertNotBlocked(tx, uid, code.generatorId);
     // The proximity failure uses the same wording as an inactive code so that
     // a remote guess cannot learn that the code exists.

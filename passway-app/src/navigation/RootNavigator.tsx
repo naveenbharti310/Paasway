@@ -23,6 +23,7 @@ import ChatsScreen from '../features/chat/screens/ChatsScreen';
 import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 import { hasSeenWelcome, welcomeSeenNow } from '../services/onboarding';
+import { diagnosticScreen } from '../services/diagnostics';
 
 import type { RootStackParamList, AuthStackParamList } from './types';
 
@@ -110,7 +111,8 @@ export default function RootNavigator() {
   if (user && stage === 'needs_age') return <AgeCheckScreen onResult={(confirmed) => setStage(confirmed ? 'ready' : 'under_minimum')} />;
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme} onReady={() => diagnosticScreen(user ? (resumeConnectionId ? 'Chats' : 'Generate') : (welcomeSeen ? 'PhoneAuth' : 'Welcome'))}
+      onStateChange={(state) => { const route = state?.routes[state.index ?? 0]; if (route) diagnosticScreen(route.name); }}>
       {user ? (
         <Stack.Navigator key="app" screenOptions={screenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />

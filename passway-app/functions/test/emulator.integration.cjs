@@ -135,3 +135,27 @@ test('maintenance runs at most once per interval even when called in parallel', 
   assert.equal(await maybeRunMaintenance(now + 60000), false);
   assert.equal(await maybeRunMaintenance(now + 16 * 60000), true);
 });
+test('automated profile cannot redeem a normal code and vice versa', async () => {
+  await seedCode();
+  await collection('users').doc('bob').update({ automatedTest: true });
+  await assert.rejects(call(redeemTid, {tid:'AB12',lat:28.6,lng:77.2,displayName:'Test'}, 'bob'), {code:'not-found'});
+  assert.equal((await collection('connectionRequests').get()).size, 0);
+  await collection('users').doc('bob').update({ automatedTest: false });
+  await collection('users').doc('alice').update({ automatedTest: true });
+  await assert.rejects(call(redeemTid, {tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'}, 'bob'), {code:'not-found'});
+  assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+});
+test('two automated profiles can pair using the real handler and transaction', async () => {
+  await Promise.all(['alice','bob'].map(uid => collection('users').doc(uid).update({automatedTest:true})));
+  await seedCode();
+  const request = await call(redeemTid, {tid:'AB12',lat:28.6,lng:77.2,displayName:'Test B'}, 'bob');
+  const result = await call(respondToRequest, {requestId:request.requestId,accept:true});
+  assert.equal((await collection('connections').doc(result.connectionId).get()).data().status, 'active');
+});
+test('pending cross-cohort request cannot be accepted', async () => {
+  await seedCode();
+  const request = await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');
+  await collection('users').doc('bob').update({automatedTest:true});
+  await assert.rejects(call(respondToRequest,{requestId:request.requestId,accept:true}),{code:'not-found'});
+  assert.equal((await collection('connections').get()).size,0);
+});

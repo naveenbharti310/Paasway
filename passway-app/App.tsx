@@ -3,6 +3,8 @@ import { Platform, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import RootNavigator from './src/navigation/RootNavigator';
 import { colors } from './src/theme/colors';
+import { useEffect } from 'react';
+import { startDiagnostics } from './src/services/diagnostics';
 
 // On a computer screen the web preview is shown at phone width in the middle.
 const webFrame = Platform.OS === 'web'
@@ -18,6 +20,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 
 export default function App() {
+  useEffect(startDiagnostics, []);
   return (
     <SafeAreaProvider>
       <View style={{ flex: 1, backgroundColor: Platform.OS === 'web' ? '#0B0B0B' : colors.bg }}>

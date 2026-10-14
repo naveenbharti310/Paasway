@@ -52,6 +52,12 @@
         "EXPO_PUBLIC_APP_CHECK": "off",
         "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0"
       }
+    },
+    "play-diagnostics": {
+      "extends": "play-testing",
+      "env": {
+        "EXPO_PUBLIC_DIAGNOSTICS": "1"
+      }
     }
   },
   "submit": {

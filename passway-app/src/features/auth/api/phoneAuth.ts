@@ -1,9 +1,11 @@
+import { NativeModules } from 'react-native';
 import { signInWithPhoneNumber, signInWithCustomToken } from '@react-native-firebase/auth';
 import { getToken } from '@react-native-firebase/app-check';
 import { auth, appCheck } from '../../../firebase/client';
 
 export interface PhoneConfirmation { confirm(code: string): Promise<unknown> }
 export const usesTwoFactorSms = process.env.EXPO_PUBLIC_OTP_PROVIDER === '2factor';
+const diagnosticPhones = new Set(['+919999900001', '+919999900002']);
 
 async function otpRequest<T>(name: string, data: unknown): Promise<T> {
   const base = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '');
@@ -20,6 +22,17 @@ async function otpRequest<T>(name: string, data: unknown): Promise<T> {
 }
 
 export async function beginPhoneSignIn(phone: string): Promise<PhoneConfirmation> {
+  if (process.env.EXPO_PUBLIC_DIAGNOSTICS === '1' && NativeModules.PasswayDiagnostics?.isTestLab && !diagnosticPhones.has(phone)) {
+    throw new Error('Automated device tests must use a configured fictional test number. No SMS was sent.');
+  }
+  // Only preconfigured Firebase fictional numbers in the internal diagnostic
+  // build use Firebase's official no-SMS testing flow. Real phones still use
+  // 2Factor. No locally generated token, fixed-code verifier, or auth bypass.
+  if (process.env.EXPO_PUBLIC_DIAGNOSTICS === '1' && diagnosticPhones.has(phone)) {
+    auth.settings.appVerificationDisabledForTesting = true;
+    return signInWithPhoneNumber(auth, phone);
+  }
+  auth.settings.appVerificationDisabledForTesting = false;
   // Provider is selected per build. Switching later retains the phone-based UID.
   // Firebase remains the fallback for an unset build setting, not provider errors.
   if (!usesTwoFactorSms) return signInWithPhoneNumber(auth, phone);

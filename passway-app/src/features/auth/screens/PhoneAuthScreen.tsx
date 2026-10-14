@@ -11,6 +11,7 @@ import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 import Brand from '../../../components/Brand';
+import { diagnosticsEnabled } from '../../../services/diagnostics';
 
 // Passway is only open to Indian numbers for now. Accepts 98765 43210,
 // 098765 43210 or +91 98765 43210 and returns +919876543210.
@@ -75,6 +76,7 @@ export default function PhoneAuthScreen() {
           <>
             <Text style={styles.title} accessibilityRole="header">Your phone number</Text>
             <Text style={styles.helper}>Used only to sign in. It is never shown to anyone you connect with.</Text>
+            {diagnosticsEnabled && <Text style={styles.hint}>Internal diagnostic build: crash reports and screen/keyboard timing help investigate freezing. Phone numbers and chat text are not added to diagnostic logs.</Text>}
             {!usesTwoFactorSms && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
               <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use 99999 00001 or 99999 00002 with the code 123456.'}</Text>
             )}

@@ -1,0 +1,388 @@
+[
+  {
+    "id": 1000,
+    "description": "Passway native startup, input validation, fictional login, synthetic chat, keyboard and code-input smoke checks",
+    "actions": [
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 2000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?welcome-next"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?welcome-next"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?welcome-next"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?get-started"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 1000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?phone-input"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?phone-input"
+          }
+        ],
+        "replacementText": "111"
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?send-code"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 1000
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?phone-input"
+          }
+        ],
+        "replacementText": "9999900001"
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?send-code"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 12000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?verify-input"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?verify-input"
+          }
+        ],
+        "replacementText": "123456"
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?verify"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 20000
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?age-day"
+          }
+        ],
+        "replacementText": "01",
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?age-month"
+          }
+        ],
+        "replacementText": "01",
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?age-year"
+          }
+        ],
+        "replacementText": "1990",
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?age-continue"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 5000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?chat-row-native-diagnostic-fixture"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 5000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?message-input"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?message-input"
+          }
+        ],
+        "replacementText": "Keyboard diagnostic draft"
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?message-input"
+          }
+        ],
+        "replacementText": "Keyboard diagnostic draft with more characters"
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?message-input"
+          }
+        ],
+        "replacementText": "Synthetic device-test message"
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?send-message"
+          }
+        ]
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 4000
+      },
+      {
+        "eventType": "PRESSED_BACK",
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?chat-back"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?new-connection"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?name-input"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?name-input"
+          }
+        ],
+        "replacementText": "Device Tester"
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?have-code"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?code-box-0"
+          }
+        ]
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?code-box-0"
+          }
+        ],
+        "replacementText": "AB12"
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?code-box-0"
+          }
+        ],
+        "replacementText": "A"
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?code-box-1"
+          }
+        ],
+        "replacementText": "B"
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?code-box-2"
+          }
+        ],
+        "replacementText": "1"
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?code-box-3"
+          }
+        ],
+        "replacementText": "2"
+      },
+      {
+        "eventType": "PRESSED_BACK"
+      },
+      {
+        "eventType": "PRESSED_BACK"
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 2000
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?open-settings"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_CLICKED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?settings-name"
+          }
+        ],
+        "optional": true
+      },
+      {
+        "eventType": "VIEW_TEXT_CHANGED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?settings-name"
+          }
+        ],
+        "replacementText": "Keyboard Diagnostic",
+        "optional": true
+      },
+      {
+        "eventType": "DELAYED_MESSAGE_POSTED",
+        "delayTime": 3000
+      }
+    ]
+  },
+  {
+    "id": 1001,
+    "description": "Avoid deleting shared test fixtures or changing accounts during exploratory crawling",
+    "actions": [
+      {
+        "eventType": "ELEMENT_IGNORED",
+        "elementDescriptors": [
+          {
+            "resourceIdRegex": "(?:.*:id/)?(?:delete-account|sign-out|chat-options)$"
+          }
+        ]
+      }
+    ]
+  }
+]

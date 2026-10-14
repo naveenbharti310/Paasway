@@ -102,7 +102,7 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.helper}>Your phone number is used only to sign in. It is never shown to anyone.</Text>
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-        <Button label="Sign out" variant="secondary" onPress={() => void signOut(auth)} disabled={deleting} />
+        <Button label="Sign out" testID="sign-out" variant="secondary" onPress={() => void signOut(auth)} disabled={deleting} />
         <Button label="Delete account" variant="danger" onPress={confirmDelete} loading={deleting} testID="delete-account" />
       </View>
     </ScrollView>

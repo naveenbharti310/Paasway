@@ -1,0 +1,13 @@
+// Run locally after provisioning the fictional accounts. Never writes an API
+// key, real-user credential, or real phone into the crawl script.
+const fs=require('fs');
+const account=JSON.parse(fs.readFileSync(process.argv[2]));
+if(!['+919999900001','+919999900002'].includes(account.phone))throw Error('Only fictional test accounts allowed');
+const d=id=>[{resourceIdRegex:`(?:.*:id/)?${id.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`}];
+const click=(id,optional=false)=>({eventType:'VIEW_CLICKED',elementDescriptors:d(id),...(optional?{optional:true}:{})});
+const type=(id,text,optional=false)=>({eventType:'VIEW_TEXT_CHANGED',elementDescriptors:d(id),replacementText:text,...(optional?{optional:true}:{})});
+const wait=ms=>({eventType:'DELAYED_MESSAGE_POSTED',delayTime:ms});
+const a=[wait(2000),click('welcome-next',true),click('welcome-next',true),click('welcome-next',true),click('get-started',true),wait(1000),click('phone-input'),type('phone-input','111'),click('send-code'),wait(1000),type('phone-input',account.phone.slice(3)),click('send-code'),wait(12000),click('verify-input'),type('verify-input',account.code),click('verify'),wait(20000),type('age-day','01',true),type('age-month','01',true),type('age-year','1990',true),click('age-continue',true),wait(5000),click(`chat-row-${account.connectionId}`),wait(5000),click('message-input'),type('message-input','Keyboard diagnostic draft'),type('message-input','Keyboard diagnostic draft with more characters'),type('message-input','Synthetic device-test message'),click('send-message'),wait(4000),{eventType:'PRESSED_BACK',optional:true},click('chat-back',true),click('new-connection'),click('name-input'),type('name-input','Device Tester'),click('have-code'),click('code-box-0'),type('code-box-0','AB12'),type('code-box-0','A'),type('code-box-1','B'),type('code-box-2','1'),type('code-box-3','2'),{eventType:'PRESSED_BACK'}, {eventType:'PRESSED_BACK'},wait(2000),click('open-settings',true),click('settings-name',true),type('settings-name','Keyboard Diagnostic',true),wait(3000)];
+const scripts=[{id:1000,description:'Passway native startup, input validation, fictional login, synthetic chat, keyboard and code-input smoke checks',actions:a},{id:1001,description:'Avoid deleting shared test fixtures or changing accounts during exploratory crawling',actions:[{eventType:'ELEMENT_IGNORED',elementDescriptors:[{resourceIdRegex:'(?:.*:id/)?(?:delete-account|sign-out|chat-options)$'}]}]}];
+fs.writeFileSync('.maestro/robo-diagnostic.json',JSON.stringify(scripts,null,2)+'\n');
+console.log(`Prepared ${a.length} scripted native actions. Pairing backend tests are separate; this script does not claim two-device E2E coverage.`);

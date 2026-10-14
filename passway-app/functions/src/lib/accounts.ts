@@ -34,6 +34,14 @@ export async function assertAccountActive(uid: string, tx: Transaction): Promise
   return user;
 }
 
+// Server-controlled profile metadata: clients cannot create or change this
+// field under Firestore rules. Automated accounts cannot connect to real users.
+export function assertSameTestCohort(a: DocumentData, b: DocumentData): void {
+  if ((a.automatedTest === true) !== (b.automatedTest === true)) {
+    throw new HttpsError('not-found', 'That code is not active. Ask them to generate a new one.');
+  }
+}
+
 export function ageOn(birthDate: string, today: Date): number {
   const [year, month, day] = birthDate.split('-').map(Number);
   let age = today.getUTCFullYear() - year;

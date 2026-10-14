@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { signOut } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
@@ -8,12 +8,14 @@ import { colors } from '../../../theme/colors';
 import Button from '../../../components/Button';
 import IconBadge from '../../../components/IconBadge';
 import FormScreen from '../../../components/FormScreen';
+import { diagnosticScreen } from '../../../services/diagnostics';
 
 interface Props {
   onResult: (confirmed: boolean) => void;
 }
 
 export default function AgeCheckScreen({ onResult }: Props) {
+  useEffect(() => diagnosticScreen('AgeCheck'), []);
   const [day, setDay] = useState('');
   const [month, setMonth] = useState('');
   const [year, setYear] = useState('');
