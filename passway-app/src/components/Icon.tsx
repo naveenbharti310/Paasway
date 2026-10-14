@@ -3,6 +3,8 @@ import { colors } from '../theme/colors';
 
 // Simple line icons drawn the same way on every phone and browser.
 const PATHS = {
+  settings: ['M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8', 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z'],
+  forward: ['M5 12h14', 'M13 6l6 6-6 6'],
   link: ['M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71', 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'],
   timer: ['M10 2h4', 'M12 14l3-3', 'M4 14a8 8 0 1 0 16 0a8 8 0 1 0 -16 0'],
   shield: ['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', 'M9 12l2 2 4-4'],

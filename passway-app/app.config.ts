@@ -31,10 +31,10 @@ const config: ExpoConfig = {
   name: 'Passway',
   slug: 'passway',
   ...(easOwner ? { owner: easOwner } : {}),
-  version: '0.2.0',
+  version: '0.3.0',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
-  backgroundColor: '#000000',
+  backgroundColor: '#0B0D11',
   icon: './assets/icon.png',
   web: { favicon: './assets/favicon.png' },
   ios: {
@@ -45,9 +45,10 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.passway.app',
+    softwareKeyboardLayoutMode: 'resize',
     googleServicesFile: googleServicesJson,
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
-    adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#000000' },
+    adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#0B0D11' },
   },
   plugins: [
     '@react-native-firebase/app',
@@ -59,7 +60,7 @@ const config: ExpoConfig = {
     'expo-notifications',
     './plugins/withFirebaseNoSpm',
     './plugins/withTestLabDetection',
-    ['expo-splash-screen', { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 96 }],
+    ['expo-splash-screen', { backgroundColor: '#0B0D11', image: './assets/splash-icon.png', imageWidth: 96 }],
     ['expo-system-ui'],
   ],
   extra: { eas: { projectId: easProjectId } },

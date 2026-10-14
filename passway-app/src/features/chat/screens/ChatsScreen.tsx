@@ -5,7 +5,8 @@ import { colors } from '../../../theme/colors';
 import ScreenHeader from '../../../components/ScreenHeader';
 import Button from '../../../components/Button';
 import Avatar from '../../../components/Avatar';
-import IconBadge from '../../../components/IconBadge';
+import HeroIllustration from '../../../components/HeroIllustration';
+import BottomNav from '../../../components/BottomNav';
 import type { RootNavigationProp } from '../../../navigation/types';
 import { useActiveChats, useNotes, useLastMessage } from '../api/chats';
 import { otherPerson } from '../identity';
@@ -49,7 +50,7 @@ export default function ChatsScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={(
             <View style={styles.emptyWrap}>
-              <IconBadge icon="chat" tone="neutral" />
+              <HeroIllustration scene="temporary" compact />
               <Text style={styles.emptyTitle}>No open chats</Text>
               <Text style={styles.empty}>When you connect with someone, your chat shows up here.</Text>
             </View>
@@ -59,9 +60,10 @@ export default function ChatsScreen() {
             const note = notes[item.connectionId];
             return (
               <TouchableOpacity style={styles.row} activeOpacity={0.6} onPress={() => navigation.navigate('Chat', { connectionId: item.connectionId })} testID={`chat-row-${item.connectionId}`} accessibilityRole="button">
-                <Avatar name={other.name} seed={item.connectionId} size={52} />
+                <Avatar name={other.name} seed={item.connectionId} size={56} />
                 <View style={styles.rowText}>
-                  <Text style={styles.name} numberOfLines={1}>{other.name}{note ? <Text style={styles.note}>{`  ${note}`}</Text> : null}</Text>
+                  <Text style={styles.name} numberOfLines={1}>{other.name}</Text>
+                  {note ? <Text style={styles.note} numberOfLines={1}>{note}</Text> : null}
                   <LastMessage connectionId={item.connectionId} uid={uid} />
                 </View>
               </TouchableOpacity>
@@ -72,6 +74,7 @@ export default function ChatsScreen() {
       <View style={styles.pad}>
         <Button label="Connect with someone new" onPress={() => navigation.navigate('Generate')} testID="new-connection" style={styles.cta} />
       </View>
+      <BottomNav active="chats" />
     </View>
   );
 }
@@ -92,19 +95,19 @@ const styles = StyleSheet.create({
   pad: { paddingHorizontal: 24 },
   loading: { marginTop: 40 },
   list: { paddingHorizontal: 24, paddingVertical: 8, flexGrow: 1 },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 68 },
+  separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 72 },
   hit: { minHeight: 44, justifyContent: 'center' },
-  pill: { fontSize: 14, color: colors.textSecondary, fontWeight: '500', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface, borderRadius: 999, overflow: 'hidden' },
+  pill: { fontFamily: 'Passway-Medium', fontSize: 14, color: colors.textSecondary, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface, borderRadius: 999, overflow: 'hidden' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 40 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
-  empty: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, maxWidth: 280 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 14 },
+  emptyTitle: { fontFamily: 'Passway-Bold', fontSize: 20, color: colors.textPrimary },
+  empty: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, maxWidth: 280 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 18 },
   rowText: { flex: 1, gap: 4 },
-  name: { fontSize: 17, fontWeight: '600', color: colors.textPrimary },
-  note: { fontSize: 15, fontWeight: '400', color: colors.gold },
+  name: { fontFamily: 'Passway-SemiBold', fontSize: 18, color: colors.textPrimary },
+  note: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.gold },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  meta: { flex: 1, fontSize: 14, color: colors.textSecondary },
+  meta: { flex: 1, fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textSecondary },
   metaEmpty: { color: colors.textMuted, fontStyle: 'italic' },
-  time: { fontSize: 12, color: colors.textMuted },
-  cta: { marginBottom: 16, marginTop: 8 },
+  time: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textMuted },
+  cta: { marginBottom: 12, marginTop: 8 },
 });

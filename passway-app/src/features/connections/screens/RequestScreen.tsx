@@ -31,7 +31,7 @@ export default function RequestScreen() {
     try {
       const result = await respondToRequest({ requestId, accept });
       if (accept && result?.connectionId) {
-        navigation.replace('Chat', { connectionId: result.connectionId });
+        navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: result.connectionId } }] });
       } else {
         navigation.replace('Generate');
       }
@@ -69,13 +69,13 @@ export default function RequestScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  ring: { width: 112, height: 112, borderRadius: 56, borderWidth: 1, borderColor: '#2A2418', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  avatar: { width: 92, height: 92, borderRadius: 46, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
-  avatarGlyph: { fontSize: 38, color: colors.gold, fontWeight: '700' },
-  name: { fontSize: 30, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.5 },
-  title: { fontSize: 16, color: colors.textSecondary, textAlign: 'center' },
-  error: { fontSize: 13, color: colors.danger, textAlign: 'center' },
-  helper: { fontSize: 13, color: colors.textMuted, marginTop: 4 },
+  ring: { width: 128, height: 128, borderRadius: 40, borderWidth: 1, borderColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  avatar: { width: 104, height: 104, borderRadius: 34, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
+  avatarGlyph: { fontFamily: 'Passway-Bold', fontSize: 38, color: colors.gold },
+  name: { fontFamily: 'Passway-Bold', fontSize: 34, color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.5 },
+  title: { fontFamily: 'Passway-Regular', fontSize: 17, color: colors.textSecondary, textAlign: 'center' },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, textAlign: 'center' },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.gold, marginTop: 8, backgroundColor: colors.accentBg, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   row: { flexDirection: 'row', gap: 12, marginTop: 28, width: '100%' },
   half: { flex: 1, width: undefined },
 });

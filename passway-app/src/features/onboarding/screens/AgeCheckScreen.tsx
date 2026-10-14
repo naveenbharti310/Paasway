@@ -68,10 +68,10 @@ export default function AgeCheckScreen({ onResult }: Props) {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 310, lineHeight: 22, marginBottom: 8 },
-  row: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  box: { width: 68, height: 60, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 14, textAlign: 'center', fontSize: 20, fontWeight: '600', color: colors.textPrimary },
-  year: { width: 100 },
-  error: { fontSize: 13, color: colors.danger },
+  title: { fontFamily: 'Passway-Bold', fontSize: 32, color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'left', maxWidth: 420, lineHeight: 22, marginBottom: 12 },
+  row: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  box: { width: 72, minHeight: 72, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 20, textAlign: 'center', fontFamily: 'Passway-SemiBold', fontSize: 20, color: colors.textPrimary },
+  year: { width: 108 },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger },
 });

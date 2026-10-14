@@ -23,6 +23,7 @@ import ChatsScreen from '../features/chat/screens/ChatsScreen';
 import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 import { hasSeenWelcome, welcomeSeenNow } from '../services/onboarding';
+import useReducedMotion from '../hooks/useReducedMotion';
 import { diagnosticScreen } from '../services/diagnostics';
 
 import type { RootStackParamList, AuthStackParamList } from './types';
@@ -33,6 +34,8 @@ const screenOptions = { headerShown: false, contentStyle: { backgroundColor: col
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
 export default function RootNavigator() {
+  const reducedMotion = useReducedMotion();
+  const motionScreenOptions = { ...screenOptions, animation: reducedMotion ? 'none' as const : screenOptions.animation };
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
@@ -114,7 +117,7 @@ export default function RootNavigator() {
     <NavigationContainer theme={navTheme} onReady={() => diagnosticScreen(user ? (resumeConnectionId ? 'Chats' : 'Generate') : (welcomeSeen ? 'PhoneAuth' : 'Welcome'))}
       onStateChange={(state) => { const route = state?.routes[state.index ?? 0]; if (route) diagnosticScreen(route.name); }}>
       {user ? (
-        <Stack.Navigator key="app" screenOptions={screenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
+        <Stack.Navigator key="app" screenOptions={motionScreenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />
           <Stack.Screen name="Code" component={CodeScreen} />
           <Stack.Screen name="EnterCode" component={EnterCodeScreen} />
@@ -125,7 +128,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       ) : (
-        <AuthStack.Navigator key="auth" screenOptions={screenOptions} initialRouteName={welcomeSeen || welcomeSeenNow() ? 'PhoneAuth' : 'Welcome'}>
+        <AuthStack.Navigator key="auth" screenOptions={motionScreenOptions} initialRouteName={welcomeSeen || welcomeSeenNow() ? 'PhoneAuth' : 'Welcome'}>
           <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
           <AuthStack.Screen name="PhoneAuth" component={PhoneAuthScreen} />
         </AuthStack.Navigator>

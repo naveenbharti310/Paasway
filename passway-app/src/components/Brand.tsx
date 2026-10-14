@@ -14,5 +14,5 @@ export default function Brand() {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   mark: { width: 11, height: 11, borderWidth: 3, borderColor: colors.gold, transform: [{ rotate: '45deg' }] },
-  word: { fontSize: 14, fontWeight: '700', letterSpacing: 4, color: colors.textPrimary },
+  word: { fontFamily: 'Passway-Bold', fontSize: 15, letterSpacing: 2.6, color: colors.textPrimary },
 });

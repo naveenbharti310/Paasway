@@ -95,7 +95,7 @@ export default function EnterCodeScreen() {
         return;
       }
       if (data.status === 'accepted' && typeof data.connectionId === 'string') {
-        navigation.replace('Chat', { connectionId: data.connectionId });
+        navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: data.connectionId } }] });
       } else if (data.status === 'declined' || data.status === 'expired') {
         setError('That code is no longer available.');
         setRequestId(null);
@@ -167,11 +167,11 @@ export default function EnterCodeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingBottom: 40 },
-  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 290, lineHeight: 22, marginBottom: 6 },
+  title: { fontFamily: 'Passway-Bold', fontSize: 32, color: colors.textPrimary, textAlign: 'left', letterSpacing: -0.4 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'left', maxWidth: 420, lineHeight: 22, marginBottom: 6 },
   pulse: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   otpRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  otpBox: { width: 60, height: 70, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: '700', color: colors.textPrimary },
+  otpBox: { width: 60, height: 76, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 20, textAlign: 'center', fontFamily: 'Passway-Bold', fontSize: 30, color: colors.textPrimary },
   otpBoxFilled: { borderColor: colors.gold, color: colors.gold },
-  error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, alignSelf: 'flex-start' },
 });

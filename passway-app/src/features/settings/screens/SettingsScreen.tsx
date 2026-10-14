@@ -9,6 +9,8 @@ import { colors } from '../../../theme/colors';
 import ScreenHeader from '../../../components/ScreenHeader';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
+import BottomNav from '../../../components/BottomNav';
+import TrustLine from '../../../components/TrustLine';
 
 const SAFETY_TIPS = [
   'Never share a one time password, PIN or bank details, even with someone you have met.',
@@ -78,9 +80,10 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}><ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <ScreenHeader title="Settings" showBack large />
 
+      <TrustLine label="Your details. Your boundaries." />
       <Text style={styles.section}>PROFILE</Text>
       <View style={styles.card}>
         <LabeledField label="Name shown to people you connect with" value={name} onChangeText={setName} maxLength={30} testID="settings-name" />
@@ -105,20 +108,20 @@ export default function SettingsScreen() {
         <Button label="Sign out" testID="sign-out" variant="secondary" onPress={() => void signOut(auth)} disabled={deleting} />
         <Button label="Delete account" variant="danger" onPress={confirmDelete} loading={deleting} testID="delete-account" />
       </View>
-    </ScrollView>
+    </ScrollView><BottomNav active="you" /></View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingHorizontal: 24, paddingTop: 16, gap: 10, paddingBottom: 48 },
-  section: { fontSize: 12, fontWeight: '600', color: colors.textMuted, letterSpacing: 1.4, marginTop: 22, marginLeft: 4 },
-  card: { backgroundColor: colors.surface, borderRadius: 20, padding: 16, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  content: { paddingHorizontal: 24, paddingTop: 16, gap: 10, paddingBottom: 32 },
+  section: { fontFamily: 'Passway-SemiBold', fontSize: 14, color: colors.textMuted, letterSpacing: 1.4, marginTop: 22, marginLeft: 4 },
+  card: { backgroundColor: colors.surface, borderRadius: 28, padding: 20, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   tipRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingVertical: 4 },
   tipDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 14 },
   tipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold, marginTop: 8 },
-  tip: { flex: 1, fontSize: 15, color: colors.textSecondary, lineHeight: 22 },
-  helper: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
-  ok: { fontSize: 13, color: colors.success },
-  error: { fontSize: 13, color: colors.danger },
+  tip: { flex: 1, fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, lineHeight: 22 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
+  ok: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.success },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger },
 });

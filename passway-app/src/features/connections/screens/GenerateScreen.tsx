@@ -10,10 +10,13 @@ import { getSavedName, saveDefaultName } from '../../profile/api/profile';
 import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
-import IconBadge from '../../../components/IconBadge';
+import HeroIllustration from '../../../components/HeroIllustration';
+import TrustLine from '../../../components/TrustLine';
+import BottomNav from '../../../components/BottomNav';
+import Icon from '../../../components/Icon';
 import Brand from '../../../components/Brand';
 import FormScreen from '../../../components/FormScreen';
-import { useActiveChats } from '../../chat/api/chats';
+
 
 export default function GenerateScreen() {
   const navigation = useNavigation<RootNavigationProp>();
@@ -21,7 +24,6 @@ export default function GenerateScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const uid = auth.currentUser?.uid ?? '';
-  const { chats } = useActiveChats(uid);
 
   useEffect(() => {
     if (!uid) return;
@@ -51,39 +53,37 @@ export default function GenerateScreen() {
   }
 
   return (
-    <FormScreen header={(
+    <FormScreen footer={<BottomNav active="connect" />} header={(
       <View style={styles.top}>
         <Brand />
         <View style={styles.topRight}>
-        {chats.length > 0 && (
-          <TouchableOpacity onPress={() => navigation.navigate('Chats')} accessibilityRole="button" accessibilityLabel={`Chats, ${chats.length} open`} testID="open-chats" style={styles.hit}>
-            <Text style={styles.chats}>{`Chats  ${chats.length}`}</Text>
-          </TouchableOpacity>
-        )}
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel="Settings" testID="open-settings" style={styles.hit}>
-          <Text style={styles.settings}>Settings</Text>
+          <Icon name="settings" size={23} color={colors.textSecondary} />
         </TouchableOpacity>
         </View>
       </View>
     )}>
-        <IconBadge icon="link" />
-        <Text style={styles.title} accessibilityRole="header">Met someone?</Text>
-        <Text style={styles.helper}>Create a one time code and show it to them. It works for 5 minutes.</Text>
+        <HeroIllustration scene="code" compact />
+        <Text style={styles.eyebrow}>CONNECT IN PERSON</Text>
+        <Text style={styles.title} accessibilityRole="header">{'A moment.\nA new connection.'}</Text>
+        <Text style={styles.helper}>Create a code for someone nearby. Your number stays private.</Text>
         <LabeledField label="your name" placeholder="Your first name" value={name} onChangeText={setName} maxLength={30} autoCapitalize="words" autoCorrect={false} textContentType="givenName" autoComplete="name-given" returnKeyType="go" onSubmitEditing={handleGenerate} testID="name-input" />
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         <Button label="Generate code" onPress={handleGenerate} loading={loading} testID="generate" />
         <Button label="I have a code" variant="secondary" disabled={loading} onPress={() => navigation.navigate('EnterCode')} testID="have-code" />
+        <TrustLine label="Nearby only · One use · Expires in 5 minutes" icon="timer" />
     </FormScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  eyebrow: { fontFamily: 'Passway-SemiBold', fontSize: 14, letterSpacing: 1.8, color: colors.gold, marginTop: -6 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44 },
-  hit: { minHeight: 44, justifyContent: 'center' },
+  hit: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: 24 },
   topRight: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  chats: { fontSize: 14, color: colors.onAccent, fontWeight: '700', backgroundColor: colors.gold, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
-  settings: { fontSize: 14, color: colors.textSecondary, fontWeight: '500', paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface, borderRadius: 999, overflow: 'hidden' },
-  title: { fontSize: 30, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.6 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22, marginBottom: 10 },
-  error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
+  chats: { fontFamily: 'Passway-Bold', fontSize: 14, color: colors.onAccent, backgroundColor: colors.gold, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
+  settings: { fontFamily: 'Passway-Medium', fontSize: 14, color: colors.textSecondary, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface, borderRadius: 999, overflow: 'hidden' },
+  title: { fontFamily: 'Passway-Bold', fontSize: 34, color: colors.textPrimary, textAlign: 'left', letterSpacing: -1.0 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'left', maxWidth: 420, lineHeight: 22, marginBottom: 10 },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, alignSelf: 'flex-start' },
 });

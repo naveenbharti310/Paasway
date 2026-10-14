@@ -41,7 +41,7 @@ export default function UnderAgeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 310, lineHeight: 22 },
-  error: { fontSize: 13, color: colors.danger },
+  title: { fontFamily: 'Passway-Bold', fontSize: 26, color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 310, lineHeight: 22 },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger },
 });
