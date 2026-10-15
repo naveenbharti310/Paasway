@@ -9,8 +9,8 @@ export function userRef(uid: string) {
   return db.collection('users').doc(uid);
 }
 
-// Phone numbers are stored only as a salted hash, and only so that a banned or
-// reported person cannot clear that status by deleting and recreating an account.
+// Holds use deterministic pseudonymous hashes, NOT a secret salt or anonymization.
+// Changing this scheme requires a migration so existing bans cannot be bypassed.
 export function phoneHash(phoneNumber: string): string {
   return createHash('sha256').update(`passway:phone:${phoneNumber}`).digest('hex');
 }

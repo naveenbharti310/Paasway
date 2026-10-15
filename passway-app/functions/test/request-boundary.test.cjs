@@ -1,0 +1,11 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const {readJson}=require('../lib/http/request');
+const request=(body,headers={})=>new Request('https://example.test',{method:'POST',body,headers,...(body instanceof ReadableStream?{duplex:'half'}:{})});
+test('bounded JSON accepts valid UTF-8 including multibyte names',async()=>{assert.deepEqual(await readJson(request('{"name":"आन्या"}')),{name:'आन्या'});});
+test('streamed size limit is enforced without Content-Length',async()=>{let cancelled=false;const stream=new ReadableStream({start(c){c.enqueue(new Uint8Array(33));},cancel(){cancelled=true;}});await assert.rejects(readJson(request(stream),32),{code:'invalid-argument'});assert.equal(cancelled,true);});
+test('size is counted in bytes rather than Unicode characters',async()=>{await assert.rejects(readJson(request('"😀😀"'),8),{code:'invalid-argument'});});
+test('oversized or malformed declared length is rejected',async()=>{for(const length of ['99999','-1','not-a-size'])await assert.rejects(readJson(request('{}',{'content-length':length}),32),{code:'invalid-argument'});});
+test('malformed JSON and invalid UTF-8 fail closed',async()=>{await assert.rejects(readJson(request('not-json')),{code:'invalid-argument'});await assert.rejects(readJson(request(new Uint8Array([0xff]))),{code:'invalid-argument'});});
+test('a nonclosing stream reaches a finite deadline',async()=>{let cancelled=false;const stream=new ReadableStream({cancel(){cancelled=true;}});await assert.rejects(readJson(request(stream),32,10),{code:'deadline-exceeded'});assert.equal(cancelled,true);});
+test('hostile cancellation cannot hold up timeout cleanup',async()=>{const stream=new ReadableStream({cancel(){return new Promise(()=>{});}});await assert.rejects(readJson(request(stream),32,10),{code:'deadline-exceeded'});});
+test('stream read errors become safe validation errors',async()=>{const stream=new ReadableStream({start(c){c.error(Error('sensitive upstream detail'));}});await assert.rejects(readJson(request(stream)),e=>e.code==='invalid-argument'&&!e.message.includes('sensitive'));});

@@ -3,6 +3,9 @@ const { test, beforeEach, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8080') throw new Error('These tests require the local Firestore emulator.');
 process.env.GCLOUD_PROJECT = 'demo-passway';
+// Supported gcp-metadata setting, after the strict localhost guard above.
+// Local emulator tests must not wait for a cloud metadata-service probe.
+process.env.METADATA_SERVER_DETECTION = 'none';
 const { db } = require('../lib/lib/firebase');
 const { getApps } = require('firebase-admin/app');
 const codeGenerator = require('../lib/lib/tid');
@@ -158,4 +161,18 @@ test('pending cross-cohort request cannot be accepted', async () => {
   await collection('users').doc('bob').update({automatedTest:true});
   await assert.rejects(call(respondToRequest,{requestId:request.requestId,accept:true}),{code:'not-found'});
   assert.equal((await collection('connections').get()).size,0);
+});
+
+test('real concurrent message retries create one message and one moderation flag', {timeout:60000}, async()=>{
+ await seedConnection();const data={connectionId:'chat1',content:'share the OTP',clientMessageId:'concurrent-key-000001'};
+ const results=await Promise.all([call(sendMessage,data),call(sendMessage,data),call(sendMessage,data)]);
+ assert.deepEqual(results[0],results[1]);assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,1);assert.equal((await collection('users').doc('alice').get()).data().flagCount,1);
+});
+test('real message retry key conflicts cannot alter committed text',async()=>{
+ await seedConnection();const data={connectionId:'chat1',content:'Original',clientMessageId:'immutable-key-000001'};await call(sendMessage,data);
+ await assert.rejects(call(sendMessage,{...data,content:'Altered'}),{code:'failed-precondition'});
+ const docs=(await collection('connections').doc('chat1').collection('messages').get()).docs;assert.equal(docs.length,1);assert.equal(docs[0].data().content,'Original');
+});
+test('real sender-scoped retry keys permit both participants independently',async()=>{
+ await seedConnection();const data={connectionId:'chat1',content:'Hello',clientMessageId:'sender-scope-000001'};await Promise.all([call(sendMessage,data,'alice'),call(sendMessage,data,'bob')]);assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,2);
 });

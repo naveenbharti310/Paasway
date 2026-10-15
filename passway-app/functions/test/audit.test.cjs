@@ -365,3 +365,30 @@ test('ending a chat removes both private notes about it', async () => {
   assert.equal(db.read('users/alice/notes/chat1'), undefined);
   assert.equal(db.read('users/bob/notes/chat1'), undefined);
 });
+
+test('message retry key stores one message and one moderation increment', async () => {
+  connection();const data={connectionId:'chat1',content:'share your OTP',clientMessageId:'retry-key-00000001'};
+  const a=await call(sendMessage,data),b=await call(sendMessage,data);
+  assert.deepEqual(a,b);assert.equal([...db.values.values()].filter(v=>v.messageId).length,1);assert.equal(db.read('users/alice').flagCount,1);
+});
+test('concurrent same-key message sends commit only once', async () => {
+  connection();const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000002'};
+  await Promise.all([call(sendMessage,data),call(sendMessage,data)]);
+  assert.equal([...db.values.values()].filter(v=>v.messageId).length,1);
+});
+test('message retry keys cannot silently overwrite changed content', async () => {
+  connection();const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000003'};
+  await call(sendMessage,data);await assert.rejects(call(sendMessage,{...data,content:'Changed'}),{code:'failed-precondition'});
+});
+test('identical retry keys from different senders do not collide',async()=>{
+  connection();const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000004'};
+  await call(sendMessage,data,'alice');await call(sendMessage,data,'bob');assert.equal([...db.values.values()].filter(v=>v.messageId).length,2);
+});
+test('invalid message retry keys fail before writes',async()=>{
+  connection();for(const key of ['short','x/y'.repeat(8),12])await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Hello',clientMessageId:key}),{code:'invalid-argument'});
+  assert.equal([...db.values.values()].filter(v=>v.messageId).length,0);
+});
+test('replaying a delivered message does not send another push',async()=>{
+  connection();db.seed('users/bob',{status:'active',ageConfirmedAt:1,pushToken:'ExpoPushToken[test-only]'});let sends=0;global.fetch=async()=>{sends++;return new Response('{"data":{"status":"ok"}}')};
+  const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000005'};await call(sendMessage,data);await call(sendMessage,data);assert.equal(sends,1);
+});

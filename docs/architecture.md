@@ -1,5 +1,7 @@
 # Architecture
 
+> Current audit and unresolved production gates: [architecture audit](architecture-audit-2026-10.md) and [reliability/security ADR](adr/0001-reliability-security-boundaries.md). Historical validation counts below are not evidence for newer commits.
+
 This document describes how Passway is built after the dependency upgrade and architectural review, why each part is shaped the way it is, and what still needs work before release.
 
 ## System overview
@@ -120,7 +122,7 @@ Limits of the free setup:
 1. App Check is off (`ENFORCE_APP_CHECK=false` on Vercel and `EXPO_PUBLIC_APP_CHECK=off` in the app) because Play Integrity only works for apps installed from Google Play. Turn both back on after publishing to the store.
 2. Expired documents are deleted by the sweep, not by TTL. The app hides expired messages straight away, but they can stay in the database for up to a day when nobody is using the app.
 3. Message screening uses the built in rules. The Google classifier needs a billing account.
-4. Real SMS codes have a small daily limit on the Spark plan. Test numbers are unlimited.
+4. Real Passway SMS uses the configured 2Factor provider and its credits/budgets; Firebase real phone-auth SMS requires Blaze. Fictional Firebase test numbers send no SMS and do not consume SMS quota.
 5. Vercel Hobby is for non commercial use. Move to Cloud Functions or a paid host before charging money.
 
 Moving to the paid Firebase plan later needs no code changes. Deploy the functions with the Firebase CLI, leave `EXPO_PUBLIC_API_URL` empty, add `ttl: true` back to the `deleteAt` field overrides, and turn App Check on.
@@ -149,9 +151,9 @@ Moving to the paid Firebase plan later needs no code changes. Deploy the functio
 | Package set | Before | After | Advisories |
 | --- | --- | --- | --- |
 | Backend | 2 moderate | Firebase Admin 14.5, Functions 7.4, TypeScript 5.9 | None |
-| Mobile | 1 critical plus high and moderate findings | Expo 57, React Native 0.86, React Native Firebase 26.4, TypeScript 6.0 | 9 high entries that all trace to one `node-forge` advisory |
+| Mobile | Historical findings changed over time | Expo 57, React Native 0.86, React Native Firebase 26.4, TypeScript 6.0 | Current audit after SDK patch alignment: 21 high affected entries from `braces` and `node-forge`; see architecture audit |
 
-The remaining `node-forge` advisory has no fixed release. It sits in Expo CLI's code signing helper, which runs on a developer machine or build server and is not shipped in the app bundle. Recheck it with `npm audit` before each release.
+Recheck current advisory results: the newer audit found both `node-forge` and `braces` build-tool advisories. At that check, their latest releases were still affected. It sits in Expo CLI's code signing helper, which runs on a developer machine or build server and is not shipped in the app bundle. Recheck it with `npm audit` before each release.
 
 Two overrides are in place. `uuid` is raised to 11.1.1 in both packages because older build tools pinned a vulnerable version. `@grpc/grpc-js` is raised to 1.14 for the Firebase JS SDK used only by the security rule tests.
 

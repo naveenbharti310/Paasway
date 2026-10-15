@@ -4,6 +4,7 @@ import { auth } from '../lib/firebase';
 import { runCallable, type CallableHandler } from '../lib/callable';
 import { log } from '../lib/logger';
 import * as exported from '../index';
+import { readJson, assertAllowedOrigin } from './request';
 
 type Callable = { handler: CallableHandler<unknown> };
 
@@ -16,7 +17,7 @@ const callables = new Map<string, CallableHandler<unknown>>(
 export const callableNames = [...callables.keys()];
 
 function reply(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
 
 function failure(error: HttpsError): Response {
@@ -29,10 +30,17 @@ async function verifiedAuth(request: Request) {
   const match = /^Bearer (.+)$/.exec(header);
   if (!match) return undefined;
   try {
-    const token = await auth.verifyIdToken(match[1]);
+    const token = await auth.verifyIdToken(match[1], true);
     return { uid: token.uid, token };
-  } catch {
-    throw new HttpsError('unauthenticated', 'Sign in again.');
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code && new Set(['auth/id-token-expired', 'auth/id-token-revoked', 'auth/user-disabled', 'auth/user-not-found',
+      'auth/invalid-id-token', 'auth/argument-error', 'auth/invalid-argument', 'auth/tenant-id-mismatch']).has(code)) {
+      throw new HttpsError('unauthenticated', 'Sign in again.');
+    }
+    // Fail closed, but do not tell users to reauthenticate (and buy another SMS)
+    // merely because the Auth service or server credentials are unavailable.
+    throw new HttpsError('unavailable', 'Sign-in verification is temporarily unavailable. Try again shortly.');
   }
 }
 
@@ -55,19 +63,17 @@ export async function handleCallable(request: Request, name: string): Promise<Re
   if (!handler) return reply(404, { error: { status: 'NOT_FOUND', message: 'Not found.' } });
   if (request.method !== 'POST') return reply(405, { error: { status: 'INVALID_ARGUMENT', message: 'Use POST.' } });
   try {
+    assertAllowedOrigin(request);
     await checkAppCheck(request);
     const callerAuth = await verifiedAuth(request);
-    let body: { data?: unknown };
-    try {
-      body = await request.json() as { data?: unknown };
-    } catch {
-      throw new HttpsError('invalid-argument', 'Request data is required.');
-    }
+    if (!callerAuth) throw new HttpsError('unauthenticated', 'Sign in first.');
+    const body = await readJson(request) as { data?: unknown } | null;
     const result = await runCallable(handler, callerAuth, body?.data);
     return reply(200, { result: result ?? null });
   } catch (error) {
     if (error instanceof HttpsError) return failure(error);
-    log.error('Callable failed', { name, error: error instanceof Error ? error.message : String(error) });
+    // Never log exception text: upstream messages can contain content or secrets.
+    log.error('Callable failed', { name });
     return failure(new HttpsError('internal', 'Something went wrong. Try again.'));
   }
 }

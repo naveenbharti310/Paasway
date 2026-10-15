@@ -1,0 +1,67 @@
+name: Architecture regression and security gates
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: architecture-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: passway-app
+    env:
+      CI: '1'
+      EXPO_PUBLIC_OTP_PROVIDER: 2factor
+      EXPO_PUBLIC_APP_CHECK: 'off'
+      EXPO_PUBLIC_API_URL: https://example.invalid
+      EXPO_PUBLIC_FIREBASE_WEB_API_KEY: build-only-not-a-live-key
+      EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-passway.firebaseapp.com
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: demo-passway
+      EXPO_PUBLIC_FIREBASE_WEB_APP_ID: '1:123456789:web:buildonly'
+      EXPO_PUBLIC_FIREBASE_SENDER_ID: '123456789'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            passway-app/package-lock.json
+            passway-app/functions/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm ci --prefix functions
+      - run: npm run test:mobile
+      - run: npm run typecheck && npm run typecheck --prefix functions
+      - run: npm test --prefix functions
+      - run: npm run test:emulator
+      - run: npx --no-install expo export --platform all --output-dir dist-ci
+  dependency-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: passway-app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Backend production dependency audit
+        run: npm audit --package-lock-only --omit=dev --prefix functions --audit-level=high
+      # Deliberately blocking while upstream build-tool advisories remain open.
+      # Do not hide this with continue-on-error or downgrade Expo across majors.
+      - name: Mobile and build-tool dependency audit
+        run: npm audit --package-lock-only --audit-level=high
