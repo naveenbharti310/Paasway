@@ -9,6 +9,7 @@ export function messageVisible(message: Message, now: number): boolean {
 
 // Visibility is based on sentAt, never the longer safety-evidence hold. Refresh
 // on expiry and foreground: backgrounded native JS timers may be suspended.
+// receivedAt is the conservative monotonic request-start anchor, not delivery time.
 export interface MessageClock { at: number; receivedAt: number }
 export function useVisibleMessages(messages: Message[], serverClock?: MessageClock): Message[] {
   const [revision, refresh] = useState(0);

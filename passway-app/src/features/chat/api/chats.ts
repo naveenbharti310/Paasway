@@ -69,8 +69,12 @@ function useServerMessages(connectionId: string, uid: string, latest: boolean): 
           dirty = false;
           const version = generation;
           try {
+            // Anchor before the request: response transit must consume (not
+            // extend) the remaining visibility window. This is conservative
+            // by up to the request duration, without trusting device wall time.
+            const requestedAt = performance.now();
             const result = await withDeadline(() => getMessages({ connectionId, latest }), 15000);
-            if (active && version === generation) setState({ scope, messages: result.messages, error: false, clock: { at: result.servedAt, receivedAt: performance.now() } });
+            if (active && version === generation) setState({ scope, messages: result.messages, error: false, clock: { at: result.servedAt, receivedAt: requestedAt } });
           } catch {
             if (active && version === generation) setState({ scope, messages: [], error: true });
             // No automatic failure retry loop or offline body fallback.
