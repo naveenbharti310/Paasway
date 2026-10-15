@@ -392,3 +392,12 @@ test('replaying a delivered message does not send another push',async()=>{
   connection();db.seed('users/bob',{status:'active',ageConfirmedAt:1,pushToken:'ExpoPushToken[test-only]'});let sends=0;global.fetch=async()=>{sends++;return new Response('{"data":{"status":"ok"}}')};
   const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000005'};await call(sendMessage,data);await call(sendMessage,data);assert.equal(sends,1);
 });
+
+for(const status of ['suspended','',undefined,null,42]){
+ test('unknown account authorization state is denied: '+String(status),async()=>{connection();db.seed('users/alice',{status,ageConfirmedAt:1});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal([...db.values.values()].filter(x=>x.messageId).length,0);});
+}
+for(const ageConfirmedAt of [NaN,Infinity,0,-1]){
+ test('invalid age confirmation cannot authorize participation: '+String(ageConfirmedAt),async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'failed-precondition'});});
+}
+test('under-minimum state wins over stale age-confirmation metadata',async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt:1,ageCheck:'under_minimum'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'failed-precondition'});});
+test('reviewed accounts remain eligible until an explicit ban',async()=>{connection();db.seed('users/alice',{status:'reported',ageConfirmedAt:1});await assert.doesNotReject(call(sendMessage,{connectionId:'chat1',content:'Permitted reviewed account'}));});

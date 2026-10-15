@@ -303,3 +303,6 @@ test('a block racing with an alternate-chat send remains authoritative after com
   assert.equal((await c.collection('messages').get()).size,sent.status==='fulfilled'?1:0);
  }
 });
+
+test('unknown recipient states deny real transaction reads and writes',async()=>{await seedConnection();await collection('users').doc('bob').update({status:'suspended'});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);});
+test('stale under-minimum metadata and malformed age confirmation cannot authorize real transactions',async()=>{await seedConnection();for(const patch of [{ageConfirmedAt:NaN},{ageConfirmedAt:Infinity},{ageConfirmedAt:0},{ageConfirmedAt:1,ageCheck:'under_minimum'}]){await collection('users').doc('alice').update(patch);await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'failed-precondition'});}assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);});
