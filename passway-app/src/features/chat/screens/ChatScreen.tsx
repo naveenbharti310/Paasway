@@ -5,7 +5,6 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { onSnapshot, doc } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
 import { sendMessage, newMessageId } from '../api/messages';
-import { messageVisible } from '../messageVisibility';
 import { createMessageRetryState } from '../messageAttempt';
 import { endConnection } from '../../connections/api/connections';
 import { fileReport, blockUser } from '../../safety/api/reports';
@@ -110,8 +109,8 @@ export default function ChatScreen() {
   useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); }, [messageLoadError]);
 
   useEffect(() => {
-    if (replyingTo && !messageVisible(replyingTo, Date.now())) setReplyingTo(null);
-    if (actionFor && !messageVisible(actionFor, Date.now())) setActionFor(null);
+    if (replyingTo && !messages.some((message) => message.messageId === replyingTo.messageId)) setReplyingTo(null);
+    if (actionFor && !messages.some((message) => message.messageId === actionFor.messageId)) setActionFor(null);
   }, [messages, replyingTo, actionFor]);
 
   // Going back always lands on the chats list, so an open chat is never

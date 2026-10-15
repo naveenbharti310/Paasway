@@ -1,6 +1,10 @@
 name: Architecture regression and security gates
+# Automatic validation is routed to Cynqra/passway-native-tests while this
+# personal account's Actions jobs are blocked before startup. Keep manual
+# execution available; do not confuse an unstarted job with a failed test.
+# Exact-source enterprise regression AND dependency-security statuses must be
+# inspected before merge. Dependency failures are never suppressed.
 on:
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read

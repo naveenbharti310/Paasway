@@ -1,12 +1,9 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { DocumentData } from 'firebase-admin/firestore';
-import { db, auth } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { userRef, holdRef, phoneHash, ageOn, validBirthDate, MINIMUM_AGE } from '../lib/accounts';
-import { applyMessageRetention } from '../lib/retention';
-import { log } from '../lib/logger';
-import { markEnded } from '../services/connections';
-import { REPORTED_HOLD_MS } from '../constants';
+import { requestAccountDeletion, resumeAccountDeletion } from '../services/accountDeletion';
 
 type HoldStatus = 'banned' | 'reported' | 'under_minimum';
 const SEVERITY: Record<HoldStatus, number> = { under_minimum: 1, reported: 2, banned: 3 };
@@ -32,6 +29,7 @@ export const confirmAge = authedCallable(async (uid, data, caller) => {
     if (!snap.exists || !user) throw new HttpsError('failed-precondition', 'Your account is not ready. Sign in again.');
     const hold = hash ? (await tx.get(holdRef(hash))).data() : undefined;
     const now = Date.now();
+    if (user.status === 'deleting') throw new HttpsError('failed-precondition', 'Account deletion is in progress.');
     if (user.ageCheck === 'under_minimum') throw new HttpsError('failed-precondition', UNDER_MINIMUM);
     if (typeof user.ageConfirmedAt === 'number') return { confirmed: true };
     if (!adult || hold?.status === 'under_minimum') {
@@ -51,56 +49,9 @@ export const confirmAge = authedCallable(async (uid, data, caller) => {
   });
 });
 
-// Deletes the account as the app stores require. Open conversations are ended
-// and keep their normal retention, so the other person is not left with an open
-// chat and any report hold still applies. The sign in record is removed last.
+// Persist intent before any external operation; retries and existing maintenance
+// resume the same bounded deletion workflow.
 export const deleteAccount = authedCallable(async (uid, _data, caller) => {
-  const ref = userRef(uid);
-  const user = (await ref.get()).data();
-  const now = Date.now();
-
-  const open = await Promise.all((['userA', 'userB'] as const).map((field) =>
-    db.collection('connections').where(field, '==', uid).where('status', '==', 'active').get()));
-  for (const doc of open.flatMap((result) => result.docs)) {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(doc.ref);
-      const connection = snap.data();
-      if (!snap.exists || !connection || connection.status !== 'active') return;
-      markEnded(tx, doc.ref, connection, uid, now, { endReason: 'account_deleted' });
-    });
-    await applyMessageRetention(doc.ref);
-  }
-
-  const codes = await db.collection('tids').where('generatorId', '==', uid).where('status', '==', 'active').get();
-  await Promise.all(codes.docs.map((doc) => db.runTransaction(async (tx) => {
-    const snap = await tx.get(doc.ref);
-    if (snap.data()?.status === 'active') tx.update(doc.ref, { status: 'deactivated' });
-  })));
-
-  const hash = typeof user?.phoneHash === 'string' ? user.phoneHash : caller.phoneNumber ? phoneHash(caller.phoneNumber) : undefined;
-  const reportedAgainst = await db.collection('reports').where('reportedId', '==', uid).limit(1).get();
-  const holdStatus: HoldStatus | null = user?.status === 'banned' ? 'banned'
-    : user?.status === 'reported' || !reportedAgainst.empty ? 'reported'
-      : user?.ageCheck === 'under_minimum' ? 'under_minimum' : null;
-  if (hash && holdStatus && holdStatus !== 'under_minimum') {
-    await db.runTransaction(async (tx) => {
-      const current = (await tx.get(holdRef(hash))).data();
-      if (!strongerHold(current, holdStatus)) return;
-      tx.set(holdRef(hash), { status: holdStatus, updatedAt: now, ...(holdStatus === 'reported' ? { deleteAt: new Date(now + REPORTED_HOLD_MS) } : {}) });
-    });
-  }
-
-  await Promise.all(['generate', 'redeem_attempt', 'message', 'safety'].map((name) => db.collection('rateLimits').doc(`${uid}_${name}`).delete()));
-  const notes = await ref.collection('notes').get();
-  await Promise.all(notes.docs.map((doc) => doc.ref.delete()));
-  await ref.delete();
-  try {
-    await auth.deleteUser(uid);
-  } catch (error) {
-    if ((error as { code?: string }).code !== 'auth/user-not-found') {
-      log.error('Sign in record could not be deleted.', { uid });
-      throw new HttpsError('internal', 'Your account was removed but sign in could not be cleared. Try again.');
-    }
-  }
-  return {};
+  await requestAccountDeletion(uid, caller.phoneNumber ? phoneHash(caller.phoneNumber) : undefined);
+  return resumeAccountDeletion(uid);
 });

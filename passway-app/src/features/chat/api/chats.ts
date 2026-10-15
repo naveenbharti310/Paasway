@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { collection, deleteDoc, doc, limit, limitToLast, onSnapshot, orderBy, query, setDoc, where } from '@react-native-firebase/firestore';
-import { db } from '../../../firebase/client';
-import { useVisibleMessages } from '../messageVisibility';
+import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from '@react-native-firebase/firestore';
+import { db, auth } from '../../../firebase/client';
+import { AppState } from 'react-native';
+import { withDeadline } from '../../../services/withDeadline';
+import { getMessages } from './messages';
+import { useVisibleMessages, type MessageClock } from '../messageVisibility';
 import type { Connection, Message } from '../../../types/models';
 
 // Every open chat the person is in, newest activity first.
@@ -48,37 +51,51 @@ export async function saveNote(uid: string, connectionId: string, note: string):
   else await setDoc(ref, { note: value, updatedAt: Date.now() });
 }
 
-// The newest message in a chat, shown under the name in the chats list.
-export function useLastMessage(connectionId: string): Message | null {
-  const [state, setState] = useState<{ id: string; last: Message | null }>({ id: '', last: null });
-  useEffect(() => {
-    if (!connectionId) return;
-    let active = true;
-    const stop = onSnapshot(
-      query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'desc'), limit(1)),
-      (snap) => { if (active) setState({ id: connectionId, last: snap.docs[0] ? (snap.docs[0].data() as Message) : null }); },
-      () => { if (active) setState({ id: connectionId, last: null }); },
-    );
-    return () => { active = false; stop(); };
-  }, [connectionId]);
-  const last = state.id === connectionId ? state.last : null;
-  return useVisibleMessages(last ? [last] : [])[0] ?? null;
-}
-
-// Scope message data to the route and current account before rendering. Never
-// rely on unsubscribe alone to prevent an already queued callback from winning.
-export function useChatMessages(connectionId: string, uid: string): { messages: Message[]; error: boolean } {
-  const [state, setState] = useState<{ scope: string; messages: Message[]; error: boolean }>({ scope: '', messages: [], error: false });
-  const scope = JSON.stringify([uid, connectionId]);
+// Connection metadata is only an invalidation signal. Message bodies always
+// pass through the server-clock expiry endpoint, never a raw Firestore listener.
+function useServerMessages(connectionId: string, uid: string, latest: boolean): { messages: Message[]; error: boolean } {
+  const [state, setState] = useState<{ scope: string; messages: Message[]; error: boolean; clock?: MessageClock }>({ scope: '', messages: [], error: false });
+  const scope = JSON.stringify([uid, connectionId, latest]);
   useEffect(() => {
     if (!uid || !connectionId) return;
-    let active = true;
-    const stop = onSnapshot(
-      query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'asc'), limitToLast(200)),
-      (snap) => { if (active) setState({ scope, messages: snap.docs.map((d) => d.data() as Message), error: false }); },
-      () => { if (active) setState({ scope, messages: [], error: true }); },
-    );
-    return () => { active = false; stop(); };
-  }, [scope, uid, connectionId]);
-  return { messages: useVisibleMessages(state.scope === scope ? state.messages : []), error: state.scope === scope && state.error };
+    let active = true, running = false, dirty = false, generation = 0;
+    async function refresh() {
+      if (!active) return;
+      dirty = true; generation++;
+      if (running) return;
+      running = true;
+      try {
+        while (active && dirty) {
+          dirty = false;
+          const version = generation;
+          try {
+            const result = await withDeadline(() => getMessages({ connectionId, latest }), 15000);
+            if (active && version === generation) setState({ scope, messages: result.messages, error: false, clock: { at: result.servedAt, receivedAt: performance.now() } });
+          } catch {
+            if (active && version === generation) setState({ scope, messages: [], error: true });
+            // No automatic failure retry loop or offline body fallback.
+            if (version === generation) dirty = false;
+          }
+        }
+      } finally { running = false; }
+    }
+    const stop = onSnapshot(doc(db, 'connections', connectionId), (snapshot) => {
+      if (snapshot.data()?.status !== 'active') { generation++; dirty = false; if (active) setState({ scope, messages: [], error: false }); return; }
+      void refresh();
+    }, () => {
+      generation++; dirty = false;
+      if (active) setState({ scope, messages: [], error: true });
+    });
+    const foreground = AppState.addEventListener('change', (state) => { if (state === 'active') void refresh(); });
+    return () => { active = false; stop(); foreground.remove(); };
+  }, [scope, uid, connectionId, latest]);
+  return { messages: useVisibleMessages(state.scope === scope ? state.messages : [], state.scope === scope ? state.clock : undefined), error: state.scope === scope && state.error };
+}
+
+export function useLastMessage(connectionId: string, uid = auth.currentUser?.uid ?? ''): Message | null {
+  return useServerMessages(connectionId, uid, true).messages[0] ?? null;
+}
+
+export function useChatMessages(connectionId: string, uid: string): { messages: Message[]; error: boolean } {
+  return useServerMessages(connectionId, uid, false);
 }

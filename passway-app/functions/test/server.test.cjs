@@ -21,7 +21,7 @@ const post = (name, body, headers = { authorization: 'Bearer good' }) => handleC
 }), name);
 
 test('every callable is served and background jobs are not', () => {
-  for (const name of ['generateTid', 'redeemTid', 'deactivateTid', 'respondToRequest', 'endConnection', 'sendMessage', 'fileReport', 'blockUser', 'confirmAge', 'deleteAccount']) {
+  for (const name of ['generateTid', 'redeemTid', 'deactivateTid', 'respondToRequest', 'endConnection', 'sendMessage', 'getMessages', 'fileReport', 'blockUser', 'confirmAge', 'deleteAccount']) {
     assert.ok(callableNames.includes(name), name);
   }
   assert.equal(callableNames.includes('closeIdleConnectionsJob'), false);
@@ -129,3 +129,4 @@ test('Auth outages fail closed as unavailable rather than demanding another SMS 
  firebase.auth.verifyIdToken=async()=>{throw Object.assign(Error('sensitive upstream detail'),{code:'auth/internal-error'})};
  const r=await post('confirmAge',{data:{birthDate:'1995-06-15'}});assert.equal(r.status,503);assert.equal((await r.json()).error.status,'UNAVAILABLE');assert.equal(db.values.size,0);
 });
+test('production cannot inherit the staging App Check bypass',async()=>{const old=process.env.VERCEL_ENV;process.env.VERCEL_ENV='production';try{const response=await post('getMessages',{data:{connectionId:'chat1'}});assert.equal(response.status,401);}finally{if(old===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=old;}});

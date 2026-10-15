@@ -1,10 +1,11 @@
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import { db } from '../lib/firebase';
 import { log } from '../lib/logger';
+import { resumePendingAccountDeletions } from './accountDeletion';
 import { closeIdleConnections } from './connections';
 import { CLEANUP_BATCH, CLEANUP_INTERVAL_MS } from '../constants';
 
-const EXPIRING = ['tids', 'connectionRequests', 'connections', 'reports', 'rateLimits', 'accountHolds'];
+const EXPIRING = ['tids', 'connectionRequests', 'connections', 'reports', 'rateLimits', 'accountHolds', 'accountDeletions'];
 
 // Candidate queries are hints, not authority: reports can extend retention
 // after selection. Revalidate in bounded transactions before deleting anything.
@@ -66,6 +67,7 @@ export async function deleteExpired(now = Date.now()): Promise<number> {
 }
 
 export async function runMaintenance(now = Date.now()): Promise<{ closed: number; deleted: number }> {
+  await resumePendingAccountDeletions();
   const closed = await closeIdleConnections(now);
   const deleted = await deleteExpired(now);
   if (closed || deleted) log.info('Maintenance finished', { closed, deleted });

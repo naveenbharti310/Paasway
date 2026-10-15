@@ -81,7 +81,7 @@ export default function ChatsScreen() {
 }
 
 function LastMessage({ connectionId, uid }: { connectionId: string; uid: string }) {
-  const last = useLastMessage(connectionId);
+  const last = useLastMessage(connectionId, uid);
   const text = last ? `${last.senderId === uid ? 'You: ' : ''}${last.content.replace(/\s+/g, ' ')}` : 'No messages yet';
   return (
     <View style={styles.metaRow}>
