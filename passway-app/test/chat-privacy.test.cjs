@@ -26,3 +26,23 @@ test('inflight API responses cannot restore content after listener authorization
 test('API failure clears bodies and does not create an automatic retry loop',async()=>{const h=harness();h.setResponder(async()=>{throw Error('offline')});h.render('useChatMessages','chat','alice');await h.emit(0,[]);assert.equal(h.render('useChatMessages','chat','alice').error,true);assert.equal(h.calls(),1)});
 
 test('server-clock visibility ignores a device wall clock ahead or behind',async()=>{const h=harness();h.setWallOffset(10*86400000);h.render('useChatMessages','chat','alice');await h.emit(0,[{sentAt:h.now()-72*3600000+1000}]);assert.equal(h.render('useChatMessages','chat','alice').messages.length,1);h.setWallOffset(-10*86400000);h.advance(1001);assert.equal(h.render('useChatMessages','chat','alice').messages.length,0)});
+
+test('network transit cannot extend message visibility past server expiry',async()=>{
+ const h=harness();let resolve;const servedAt=h.now();
+ h.setResponder(()=>new Promise(r=>resolve=r));
+ h.render('useChatMessages','chat','alice');await h.emit(0,[]);
+ h.advance(1000,false);
+ resolve({servedAt,messages:[{messageId:'expired-in-transit',sentAt:servedAt-72*3600000+500}]});
+ await tick();
+ assert.equal(h.render('useChatMessages','chat','alice').messages.length,0);
+});
+
+test('a delayed response still displays messages safely inside their retention window',async()=>{
+ const h=harness();let resolve;const servedAt=h.now();
+ h.setResponder(()=>new Promise(r=>resolve=r));
+ h.render('useChatMessages','chat','alice');await h.emit(0,[]);
+ h.advance(1000,false);
+ resolve({servedAt,messages:[{messageId:'fresh-in-transit',sentAt:servedAt}]});
+ await tick();
+ assert.equal(h.render('useChatMessages','chat','alice').messages.length,1);
+});
