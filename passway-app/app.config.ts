@@ -27,9 +27,21 @@ if (process.env.EXPO_PUBLIC_DIAGNOSTICS === '1' && process.env.EAS_BUILD_PROFILE
   throw new Error('Diagnostics and fictional test login are restricted to the play-diagnostics build profile.');
 }
 
-// Production must not inherit the internal APK's App Check bypass.
-if (process.env.EAS_BUILD_PROFILE === 'production' && process.env.EXPO_PUBLIC_APP_CHECK === 'off') {
+const appCheckSetting = process.env.EXPO_PUBLIC_APP_CHECK;
+if (appCheckSetting && !['on', 'off'].includes(appCheckSetting)) {
+  throw new Error('App Check setting must be on or off.');
+}
+// Store-attestation builds must exercise the same verification policy as
+// production, not inherit the internal diagnostic APK's bypass or credentials.
+const verifiedRelease = ['production', 'play-attestation'].includes(process.env.EAS_BUILD_PROFILE ?? '');
+if (verifiedRelease && appCheckSetting === 'off') {
   throw new Error('Production builds must not disable App Check. Use an internal testing profile instead.');
+}
+if (verifiedRelease && process.env.EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN) {
+  throw new Error('Release builds must not bundle an App Check debug token.');
+}
+if (verifiedRelease && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1') {
+  throw new Error('Release builds must not show fictional test numbers.');
 }
 
 const config: ExpoConfig = {
