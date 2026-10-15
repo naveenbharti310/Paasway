@@ -51,7 +51,7 @@ export default function AgeCheckScreen({ onResult }: Props) {
     <FormScreen>
         <IconBadge icon="calendar" />
         <Text style={styles.title} accessibilityRole="header">What is your date of birth?</Text>
-        <Text style={styles.helper}>Passway is for people aged 18 and over. We only keep whether you are old enough, not the date itself. You can answer once.</Text>
+        <Text style={styles.helper}>Passway is for people aged 18 and over. We store your eligibility result. If you are under 18, we also keep the date you turn 18. You can answer once.</Text>
         <View style={styles.row}>
           <TextInput testID="age-day" ref={dayRef} maxFontSizeMultiplier={1.2} style={styles.box} placeholder="DD" placeholderTextColor={colors.textMuted} selectionColor={colors.gold} keyboardType="number-pad" maxLength={2} value={day}
             accessibilityLabel="Day" onChangeText={(v) => { setDay(digits(v)); if (digits(v).length === 2) monthRef.current?.focus(); }} />

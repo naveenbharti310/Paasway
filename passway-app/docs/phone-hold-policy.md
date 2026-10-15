@@ -23,6 +23,15 @@ Five new unit cases failed against the prior implementation.
   authorization to reinterpret or remove them.
 - No DOB, raw phone, paid queue or new service is introduced.
 
+### Privacy disclosure
+
+The under-age hold's existing eligibility expiry is calculated from the declared
+birth date. Although a raw DOB field is not persisted, subtracting 18 years from
+that expiry can reveal the declared DOB. It is therefore not accurate to promise
+that only a boolean is retained. The age-check screen now explicitly discloses
+that under-age users' eligibility date is kept. This is a disclosure correction,
+not a claim that the date is anonymous or cryptographically unrecoverable.
+
 The preserved age restriction is intentionally not extended to the report's
 180-day review expiry. These are different policies: a report must neither
 shorten nor silently lengthen an existing age restriction.
