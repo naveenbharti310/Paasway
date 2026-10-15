@@ -121,7 +121,7 @@ export default function RootNavigator() {
         <TouchableOpacity testID="startup-retry" accessibilityRole="button" onPress={() => setRetry((value) => value + 1)}>
           <Text style={{ color: colors.accentText }}>Try again</Text>
         </TouchableOpacity>
-        <TouchableOpacity testID="startup-signout" accessibilityRole="button" onPress={() => void signOut(auth).catch(() => setSetupError('Could not sign out. Try again.'))}>
+        <TouchableOpacity testID="startup-signout" accessibilityRole="button" onPress={() => void signOut(auth).then(() => setRetry((value) => value + 1)).catch(() => setSetupError('Could not sign out. Try again.'))}>
           <Text style={{ color: colors.textPrimary }}>Sign out</Text>
         </TouchableOpacity>
       </View>

@@ -19,7 +19,7 @@ function harness(overrides={}) {
     'expo-notifications':{addPushTokenListener:()=>({remove(){removed++}})},
     '@react-navigation/native':{NavigationContainer:'NavigationContainer',DarkTheme:{colors:{}}},
     '@react-navigation/native-stack':{createNativeStackNavigator:()=>({Navigator:'Navigator',Screen:'Screen'})},
-    '@react-native-firebase/auth':{onAuthStateChanged:(auth,onUser,onError)=>{listener=onUser;authError=onError;return ()=>{unsubscribed++}},signOut:async()=>{}},
+    '@react-native-firebase/auth':{onAuthStateChanged:(auth,onUser,onError)=>{listener=onUser;authError=onError;return ()=>{unsubscribed++}},signOut:overrides.signOut||asyncNull},
     '../firebase/client':{auth:{}},
     '../features/connections/api/activeConnection':{findActiveConnection:overrides.findActiveConnection||asyncNull},
     '../features/auth/api/ensureUser':{ensureUserDoc:overrides.ensureUserDoc||asyncReady},
@@ -62,3 +62,6 @@ test('late auth callback after deadline cannot dismiss recovery without retry',a
 test('an ordinary account error clears the watchdog',async()=>{const h=harness({ensureUserDoc:async()=>{throw new Error('account unavailable')}});await h.notify({uid:'a'});assert.ok(h.find('startup-error'));assert.equal(h.timers.size,0)});
 test('native auth error clears the watchdog',()=>{const h=harness();h.error(new Error('native auth failed'));assert.ok(h.find('startup-error'));assert.equal(h.timers.size,0)});
 test('a later auth event after a completed session gets a new deadline',async()=>{const h=harness({ensureUserDoc:uid=>uid==='a'?Promise.resolve('ready'):new Promise(()=>{})});await h.notify({uid:'a'});h.advance(30000);void h.notify({uid:'b'});h.advance(20001);assert.ok(h.find('startup-error'))});
+
+test('Sign out after a deadline starts a fresh signed-out subscription',async()=>{const h=harness();h.advance(20001);h.find('startup-signout').props.onPress();await tick();h.render();await h.notify(null);assert.equal(h.find('startup-error'),undefined);assert.equal(h.render().type,'NavigationContainer');assert.equal(h.stats().unsubscribed,1)});
+test('failed recovery Sign out remains retryable without an unhandled rejection',async()=>{const h=harness({signOut:async()=>{throw new Error('offline signout')}});h.advance(20001);h.find('startup-signout').props.onPress();await tick();assert.ok(h.find('startup-error'));assert.ok(h.find('startup-retry'));assert.equal(h.timers.size,0)});
