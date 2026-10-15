@@ -18,7 +18,7 @@
     "test:push-registration": "node --test test/push-registration.test.cjs",
     "test:startup-recovery": "node --test test/startup-recovery.test.cjs",
     "test:reliability": "node --test test/reliability.test.cjs",
-    "test:mobile": "node --test test/push-registration.test.cjs test/startup-recovery.test.cjs test/reliability.test.cjs"
+    "test:mobile": "node --test test/push-registration.test.cjs test/startup-recovery.test.cjs test/reliability.test.cjs test/chat-privacy.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

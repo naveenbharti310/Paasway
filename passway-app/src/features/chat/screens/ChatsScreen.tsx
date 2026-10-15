@@ -25,7 +25,7 @@ function shortTime(at: number): string {
 export default function ChatsScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const uid = auth.currentUser?.uid ?? '';
-  const { chats, loading } = useActiveChats(uid);
+  const { chats, loading, error } = useActiveChats(uid);
   const notes = useNotes(uid);
 
   return (
@@ -42,6 +42,7 @@ export default function ChatsScreen() {
           )}
         />
       </View>
+      {error && <Text accessibilityRole="alert" style={styles.empty}>Some chats could not load. Check your connection and reopen this screen.</Text>}
       {loading ? <ActivityIndicator style={styles.loading} color={colors.gold} /> : (
         <FlatList
           data={chats}

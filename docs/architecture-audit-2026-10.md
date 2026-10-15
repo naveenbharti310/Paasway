@@ -62,3 +62,11 @@ Instrumentation should use generated correlation IDs and aggregate timing/status
 ## Validation and evidence
 
 Final result counts, exact source commit and export checks are recorded in the audit PR and attached/local evidence manifest. Suites cover actual transpiled mobile adapters/state helpers, backend domain/HTTP/security unit tests, Firestore rules and real emulator transactions. Time-controlled module tests are not native-device E2E. The dependency-security gate is intentionally blocking until advisory exposure is resolved/reviewed. No main-branch merge, production deploy, Firebase rule deploy, paid infrastructure purchase or additional live SMS is included.
+
+## Follow-up deep adversarial audit
+
+The stacked `audit/deep-race-retention` branch reproduces additional concurrency
+and mobile privacy defects missed by the original regression suite. See
+[findings, fixes and remaining release blockers](../passway-app/docs/deep-architecture-audit.md)
+and [validation scope](../passway-app/docs/deep-architecture-validation.md). The original native
+artifact results must not be attributed to either newer source branch.

@@ -2,9 +2,10 @@ import { errorMessage } from '../../../services/errors';
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { collection, query, orderBy, onSnapshot, doc, limitToLast } from '@react-native-firebase/firestore';
+import { onSnapshot, doc } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
 import { sendMessage, newMessageId } from '../api/messages';
+import { messageVisible } from '../messageVisibility';
 import { createMessageRetryState } from '../messageAttempt';
 import { endConnection } from '../../connections/api/connections';
 import { fileReport, blockUser } from '../../safety/api/reports';
@@ -17,7 +18,7 @@ import SwipeToReply from '../components/SwipeToReply';
 import Avatar from '../../../components/Avatar';
 import Icon from '../../../components/Icon';
 import { tap } from '../../../services/haptics';
-import { saveNote, useNotes } from '../api/chats';
+import { saveNote, useNotes, useChatMessages } from '../api/chats';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -64,7 +65,7 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { params } = useRoute<ChatRouteProp>();
   const { connectionId } = params;
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, error: messageLoadError } = useChatMessages(connectionId, auth.currentUser?.uid ?? '');
   const [connection, setConnection] = useState<Connection | null>(null);
   const [draft, setDraft] = useState('');
   const messageAttempts = useRef(createMessageRetryState(newMessageId));
@@ -106,19 +107,12 @@ export default function ChatScreen() {
     return unsubscribe;
   }, [connectionId, navigation, currentUserId]);
 
+  useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); }, [messageLoadError]);
+
   useEffect(() => {
-    const q = query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'asc'), limitToLast(200));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Expired messages can stay in the database until the next cleanup
-      // sweep, so hide anything past its deletion time.
-      const now = Date.now();
-      setMessages(snapshot.docs.filter((d) => {
-        const deleteAt = d.get('deleteAt') as { toMillis?: () => number } | undefined;
-        return !deleteAt?.toMillis || deleteAt.toMillis() > now;
-      }).map((d) => d.data() as Message));
-    }, (err) => setError(errorMessage(err, 'Could not load messages.')));
-    return unsubscribe;
-  }, [connectionId]);
+    if (replyingTo && !messageVisible(replyingTo, Date.now())) setReplyingTo(null);
+    if (actionFor && !messageVisible(actionFor, Date.now())) setActionFor(null);
+  }, [messages, replyingTo, actionFor]);
 
   // Going back always lands on the chats list, so an open chat is never
   // hidden somewhere the person cannot find it again.
