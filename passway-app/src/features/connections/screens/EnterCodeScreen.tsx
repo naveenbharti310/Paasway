@@ -125,7 +125,7 @@ export default function EnterCodeScreen() {
       <View style={styles.container}>
         <ScreenHeader showBack={false} />
         <View style={styles.center}>
-          <View style={styles.pulse}><ActivityIndicator color={colors.gold} size="large" /></View>
+          <View style={styles.pulse}><ActivityIndicator accessibilityLabel="Waiting for connection acceptance" color={colors.gold} size="large" /></View>
           <Text style={styles.title}>Waiting for them to accept</Text>
           <Text style={styles.helper}>They will see your name and choose to accept or decline.</Text>
         </View>

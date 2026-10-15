@@ -90,3 +90,50 @@ test('callable entrypoint normalizes native failures while retaining successful 
  const direct = load('firebase/client.ts', mocks, { Error, process: { env: { EXPO_PUBLIC_APP_CHECK: 'off' } } });
  assert.equal((await direct.callable('ok')({})).ok, true);
 });
+
+test('every application loading indicator has an explicit accessible name', () => {
+ const root = path.join(__dirname, '../src');
+ function inspect(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+   const file = path.join(dir, entry.name);
+   if (entry.isDirectory()) { inspect(file); continue; }
+   if (!file.endsWith('.tsx')) continue;
+   const tree = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+   function visit(node) {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(tree) === 'ActivityIndicator') {
+     const label = node.attributes.properties.find(p => ts.isJsxAttribute(p) && p.name.getText(tree) === 'accessibilityLabel');
+     assert.ok(label?.initializer && label.initializer.getText(tree).length > 2, `${path.relative(root, file)}: unnamed progress indicator`);
+    }
+    ts.forEachChild(node, visit);
+   }
+   visit(tree);
+  }
+ }
+ inspect(root);
+});
+
+test('actual Chats loading markup exposes its progressbar name in React Native Web', () => {
+ const React = require('react'), { renderToStaticMarkup } = require('react-dom/server');
+ const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/features/chat/screens/ChatsScreen.tsx'), 'utf8'), {
+  fileName: 'ChatsScreen.tsx', compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+ }).outputText;
+ const empty = () => null;
+ const mocks = {
+  '@react-navigation/native': { useNavigation: () => ({ canGoBack: () => false }) },
+  '../../../firebase/client': { auth: { currentUser: { uid: 'fictional-accessibility-fixture' } } },
+  '../../../theme/colors': { colors: {} },
+  '../../../components/ScreenHeader': empty, '../../../components/Button': empty,
+  '../../../components/Avatar': empty, '../../../components/HeroIllustration': empty, '../../../components/BottomNav': empty,
+  '../api/chats': { useActiveChats: () => ({ chats: [], loading: true, error: false }), useNotes: () => ({}), useLastMessage: () => null },
+  '../identity': { otherPerson: () => ({}) },
+ };
+ const m = { exports: {} };
+ vm.runInNewContext(code, { module: m, exports: m.exports, require: name => {
+  if (name in mocks) return mocks[name];
+  if (name === 'react-native') return require('react-native-web');
+  if (name === 'react/jsx-runtime') return require(name);
+  throw Error('Unexpected rendering dependency ' + name);
+ }});
+ const markup = renderToStaticMarkup(React.createElement(m.exports.default));
+ assert.match(markup, /<div(?=[^>]*role="progressbar")(?=[^>]*aria-label="Loading chats")[^>]*>/);
+});

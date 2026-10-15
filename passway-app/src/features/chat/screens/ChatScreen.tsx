@@ -298,7 +298,7 @@ export default function ChatScreen() {
           } : undefined} editable={!ending && !submitting && connection?.status === 'active'} />
         <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message"
           style={[styles.sendButton, !draft.trim() && !sending && styles.sendButtonOff]}>
-          {sending ? <ActivityIndicator color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
+          {sending ? <ActivityIndicator accessibilityLabel="Sending message" color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
         </TouchableOpacity>
       </View>
 
@@ -324,7 +324,7 @@ export default function ChatScreen() {
                 setSavingNote(false);
               }
             }}>
-              {savingNote ? <ActivityIndicator color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
+              {savingNote ? <ActivityIndicator accessibilityLabel="Saving private note" color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={() => setNoteVisible(false)}>
               <Text style={styles.sheetRowMuted}>Cancel</Text>
