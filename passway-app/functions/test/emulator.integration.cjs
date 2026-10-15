@@ -176,3 +176,57 @@ test('real message retry key conflicts cannot alter committed text',async()=>{
 test('real sender-scoped retry keys permit both participants independently',async()=>{
  await seedConnection();const data={connectionId:'chat1',content:'Hello',clientMessageId:'sender-scope-000001'};await Promise.all([call(sendMessage,data,'alice'),call(sendMessage,data,'bob')]);assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,2);
 });
+
+test('cleanup cannot delete a message after a report hold commits during candidate selection', {timeout:60000}, async()=>{
+ await seedConnection();const m=collection('connections').doc('chat1').collection('messages').doc('held');await m.set({content:'evidence',sentAt:Date.now()-4*86400000,deleteAt:new Date(Date.now()-1000)});
+ const original=db.collectionGroup;let fired=false;
+ function wrap(q){return new Proxy(q,{get(target,key){if(key==='get')return async()=>{const snap=await target.get();if(!fired){fired=true;await call(fileReport,{connectionId:'chat1',reportedId:'alice',reason:'Unsafe'},'bob');}return snap;};const value=Reflect.get(target,key,target);if(typeof value==='function'&&['where','limit'].includes(key))return (...args)=>wrap(value.apply(target,args));return typeof value==='function'?value.bind(target):value;}});}
+ db.collectionGroup=function(name){const q=original.call(this,name);return name==='messages'?wrap(q):q;};
+ try{await require('../lib/services/cleanup').deleteExpired();}finally{db.collectionGroup=original;}
+ assert.equal(fired,true);assert.equal((await m.get()).exists,true,'cleanup must recheck the newly committed safety hold');
+});
+test('cleanup protects and repairs messages while parent report retention has not propagated',async()=>{
+ await seedConnection();const future=new Date(Date.now()+90*86400000);await collection('connections').doc('chat1').update({status:'ended',deleteAt:future});const m=collection('connections').doc('chat1').collection('messages').doc('unrepaired');await m.set({content:'evidence',deleteAt:new Date(Date.now()-1000)});
+ await require('../lib/services/cleanup').deleteExpired();const snap=await m.get();assert.equal(snap.exists,true);assert.equal(snap.data().deleteAt.toMillis(),future.getTime());
+});
+test('cleanup drains expired children before removing their parent connection', {timeout:60000},async()=>{
+ await seedConnection();const ref=collection('connections').doc('chat1'),past=new Date(Date.now()-1000);await ref.update({status:'ended',deleteAt:past});const batch=db.batch();for(let i=0;i<301;i++)batch.set(ref.collection('messages').doc('m'+i),{content:'expired',deleteAt:past});await batch.commit();
+ const {deleteExpired}=require('../lib/services/cleanup');await deleteExpired();assert.equal((await ref.get()).exists,true,'a bounded message batch must not orphan remaining children');await deleteExpired();assert.equal((await ref.collection('messages').get()).size,0);assert.equal((await ref.get()).exists,false);
+});
+test('a block created after redemption prevents acceptance of the pending request',async()=>{
+ await seedConnection();await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');await call(blockUser,{connectionId:'chat1'},'bob');
+ await assert.rejects(call(respondToRequest,{requestId:pending.requestId,accept:true}),{code:'not-found'});assert.equal((await collection('connections').where('status','==','active').get()).size,0);
+});
+test('lost acceptance acknowledgements can be replayed without a second connection',async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:true};const first=await call(respondToRequest,data);const replay=await call(respondToRequest,data);assert.deepEqual(replay,first);assert.equal((await collection('connections').get()).size,1);
+});
+
+test('concurrent acceptance retries converge to one active connection', {timeout:60000},async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:true};const results=await Promise.all([call(respondToRequest,data),call(respondToRequest,data),call(respondToRequest,data)]);assert.deepEqual(results[0],results[1]);assert.deepEqual(results[1],results[2]);assert.equal((await collection('connections').get()).size,1);
+});
+test('acceptance replays cannot reopen ended connections or reverse a decision',async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:true};const accepted=await call(respondToRequest,data);await assert.rejects(call(respondToRequest,{...data,accept:false}),{code:'failed-precondition'});await call(endConnection,{connectionId:accepted.connectionId});await assert.rejects(call(respondToRequest,data),{code:'failed-precondition'});assert.equal((await collection('connections').get()).size,1);
+});
+test('acceptance replay is restricted to its generator',async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:true};await call(respondToRequest,data);await assert.rejects(call(respondToRequest,data,'bob'),{code:'failed-precondition'});await assert.rejects(call(respondToRequest,data,'carol'),{code:'failed-precondition'});
+});
+test('decline is retryable but cannot subsequently be accepted',async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:false};assert.deepEqual(await call(respondToRequest,data),{});assert.deepEqual(await call(respondToRequest,data),{});await assert.rejects(call(respondToRequest,{...data,accept:true}),{code:'failed-precondition'});assert.equal((await collection('connections').get()).size,0);
+});
+test('cleanup never deletes an active parent with an erroneous expired marker',async()=>{
+ await seedConnection();await collection('connections').doc('chat1').update({deleteAt:new Date(Date.now()-1000)});await require('../lib/services/cleanup').deleteExpired();assert.equal((await collection('connections').doc('chat1').get()).exists,true);
+});
+test('cleanup does not orphan nonexpired evidence under an expired parent',async()=>{
+ await seedConnection();const ref=collection('connections').doc('chat1');await ref.update({status:'ended',deleteAt:new Date(Date.now()-1000)});await ref.collection('messages').doc('evidence').set({deleteAt:new Date(Date.now()+3600000)});await require('../lib/services/cleanup').deleteExpired();assert.equal((await ref.get()).exists,true);assert.equal((await ref.collection('messages').doc('evidence').get()).exists,true);
+});
+test('accepted-request replay survives code cleanup without allocating again',async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:true};const result=await call(respondToRequest,data);await collection('tids').doc('AB12').delete();assert.deepEqual(await call(respondToRequest,data),result);assert.equal((await collection('connections').get()).size,1);
+});
+test('accepted-request replay does not bypass a newly banned account',async()=>{
+ await seedCode();const pending=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');const data={requestId:pending.requestId,accept:true};await call(respondToRequest,data);await collection('users').doc('bob').update({status:'banned'});await assert.rejects(call(respondToRequest,data),{code:'permission-denied'});
+});
+test('cleanup rechecks account hold extensions after the expiry query',async()=>{
+ const ref=collection('accountHolds').doc('held-phone');await ref.set({status:'reported',deleteAt:new Date(Date.now()-1000)});const future=new Date(Date.now()+3600000);const original=db.collection;let fired=false;
+ function wrap(q){return new Proxy(q,{get(target,key){if(key==='get')return async()=>{const result=await target.get();if(!fired){fired=true;await ref.update({deleteAt:future});}return result;};const value=Reflect.get(target,key,target);if(typeof value==='function'&&['where','limit'].includes(key))return(...args)=>wrap(value.apply(target,args));return typeof value==='function'?value.bind(target):value;}});}
+ db.collection=function(name){const q=original.call(this,name);return name==='accountHolds'?wrap(q):q;};try{await require('../lib/services/cleanup').deleteExpired();}finally{db.collection=original;}assert.equal(fired,true);assert.equal((await ref.get()).exists,true);assert.equal((await ref.get()).data().deleteAt.toMillis(),future.getTime());
+});

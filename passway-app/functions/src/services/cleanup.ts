@@ -1,3 +1,4 @@
+import type { DocumentSnapshot } from 'firebase-admin/firestore';
 import { db } from '../lib/firebase';
 import { log } from '../lib/logger';
 import { closeIdleConnections } from './connections';
@@ -5,9 +6,17 @@ import { CLEANUP_BATCH, CLEANUP_INTERVAL_MS } from '../constants';
 
 const EXPIRING = ['tids', 'connectionRequests', 'connections', 'reports', 'rateLimits', 'accountHolds'];
 
-// Deletes documents whose deleteAt has passed. Firestore TTL policies do this
-// on paid plans. On the free plan this sweep is the only thing that deletes
-// expired data, so it runs on a schedule and after client requests.
+// Candidate queries are hints, not authority: reports can extend retention
+// after selection. Revalidate in bounded transactions before deleting anything.
+const TRANSACTION_CHUNK = 25;
+function expiryMillis(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (value && typeof (value as { toMillis?: unknown }).toMillis === 'function') {
+    return (value as { toMillis(): number }).toMillis();
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
 export async function deleteExpired(now = Date.now()): Promise<number> {
   const cutoff = new Date(now);
   const queries = [
@@ -16,12 +25,42 @@ export async function deleteExpired(now = Date.now()): Promise<number> {
   ];
   let deleted = 0;
   for (const query of queries) {
-    const snap = await query.get();
-    if (snap.empty) continue;
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    deleted += snap.size;
+    const candidates = (await query.get()).docs;
+    for (let offset = 0; offset < candidates.length; offset += TRANSACTION_CHUNK) {
+      deleted += await db.runTransaction(async (tx) => {
+        const live = await Promise.all(candidates.slice(offset, offset + TRANSACTION_CHUNK).map((candidate) => tx.get(candidate.ref)));
+        const parents = new Map<string, Promise<DocumentSnapshot>>();
+        const plans = await Promise.all(live.map(async (snap) => {
+          if (!snap.exists || expiryMillis(snap.data()?.deleteAt) > now) return null;
+          const ref = snap.ref;
+          if (ref.parent.id === 'messages' && ref.parent.parent) {
+            const parentRef = ref.parent.parent;
+            let read = parents.get(parentRef.path);
+            if (!read) { read = tx.get(parentRef); parents.set(parentRef.path, read); }
+            const parent = await read;
+            const data = parent.data();
+            if (data?.status === 'ended' && expiryMillis(data.deleteAt) > now && data.deleteAt) {
+              return { ref, repair: data.deleteAt };
+            }
+          }
+          if (ref.parent.id === 'connections') {
+            if (snap.data()?.status !== 'ended') return null;
+            // Firestore does not cascade subcollections. Keep the parent until
+            // every child has drained, including children beyond this page.
+            if ((await tx.get(ref.collection('messages').limit(1))).docs.length) return null;
+          }
+          return { ref, repair: null };
+        }));
+        let count = 0;
+        // All transaction reads must finish before any write.
+        for (const plan of plans) {
+          if (!plan) continue;
+          if (plan.repair) tx.update(plan.ref, { deleteAt: plan.repair });
+          else { tx.delete(plan.ref); count++; }
+        }
+        return count;
+      });
+    }
   }
   return deleted;
 }
