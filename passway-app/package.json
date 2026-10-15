@@ -11,10 +11,12 @@
     "test:rules": "node --test test/firestore.rules.test.cjs",
     "test:rules:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules\"",
     "test:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules && npm run test:integration --prefix functions\"",
-    "check": "npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist",
+    "check": "npm run test:push-registration && npm run test:startup-recovery && npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist",
     "preview:web": "sh scripts/web-preview.sh",
     "icons": "node scripts/make-icons.cjs",
-    "postinstall": "node scripts/materialize-design-assets.cjs"
+    "postinstall": "node scripts/materialize-design-assets.cjs",
+    "test:push-registration": "node --test test/push-registration.test.cjs",
+    "test:startup-recovery": "node --test test/startup-recovery.test.cjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

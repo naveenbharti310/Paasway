@@ -12,7 +12,7 @@ import WelcomeScreen from '../features/onboarding/screens/WelcomeScreen';
 import AgeCheckScreen from '../features/onboarding/screens/AgeCheckScreen';
 import UnderAgeScreen from '../features/onboarding/screens/UnderAgeScreen';
 import SettingsScreen from '../features/settings/screens/SettingsScreen';
-import { registerForPush } from '../services/notifications';
+import { registerForPush, refreshPushToken } from '../services/notifications';
 import PhoneAuthScreen from '../features/auth/screens/PhoneAuthScreen';
 import GenerateScreen from '../features/connections/screens/GenerateScreen';
 import CodeScreen from '../features/connections/screens/CodeScreen';
@@ -49,8 +49,28 @@ export default function RootNavigator() {
     let active = true;
     let version = 0;
     let pushListener: ReturnType<typeof Notifications.addPushTokenListener> | undefined;
+    let timedOut = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const clearDeadline = () => { if (deadline !== undefined) clearTimeout(deadline); deadline = undefined; };
+    const armDeadline = () => {
+      clearDeadline();
+      deadline = setTimeout(() => {
+        if (!active) return;
+        timedOut = true;
+        ++version; // Late network results must not replace the recovery screen.
+        clearDeadline();
+        pushListener?.remove();
+        pushListener = undefined;
+        setSetupError('Loading your account took too long. Check your connection and try again.');
+        setCheckingAuth(false);
+      }, 20_000);
+    };
+    // Covers both a missing native auth callback and stalled setup requests.
+    armDeadline();
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (!active || timedOut) return;
       const currentVersion = ++version;
+      if (deadline === undefined) armDeadline();
       pushListener?.remove();
       pushListener = undefined;
       setCheckingAuth(true);
@@ -67,35 +87,41 @@ export default function RootNavigator() {
           if (nextStage === 'ready') resume = await findActiveConnection(u.uid).catch(() => null);
         }
         if (!active || currentVersion !== version) return;
+        clearDeadline();
         setStage(nextStage);
         setResumeConnectionId(resume);
         setCheckingAuth(false);
         if (u && Platform.OS !== 'web') {
           const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
           void refreshPush();
-          pushListener = Notifications.addPushTokenListener(() => void refreshPush());
+          pushListener = Notifications.addPushTokenListener((token) => {
+            void refreshPushToken(u.uid, token).catch(() => console.warn('Notification token refresh could not be completed.'));
+          });
         }
       } catch (err) {
         if (!active || currentVersion !== version) return;
+        clearDeadline();
         setSetupError(errorMessage(err, 'Your account could not be loaded. Try again.'));
         setCheckingAuth(false);
       }
     }, (err) => {
-      if (!active) return;
+      if (!active || timedOut) return;
+      ++version;
+      clearDeadline();
       setSetupError(errorMessage(err, 'Sign in could not be checked.'));
       setCheckingAuth(false);
     });
-    return () => { active = false; unsubscribe(); pushListener?.remove(); };
+    return () => { active = false; ++version; clearDeadline(); unsubscribe(); pushListener?.remove(); };
   }, [retry]);
 
   if (setupError) {
     return (
-      <View style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 16, backgroundColor: colors.bg }}>
+      <View testID="startup-error" style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 16, backgroundColor: colors.bg }}>
         <Text style={{ color: colors.danger }}>{setupError}</Text>
-        <TouchableOpacity accessibilityRole="button" onPress={() => setRetry((value) => value + 1)}>
+        <TouchableOpacity testID="startup-retry" accessibilityRole="button" onPress={() => setRetry((value) => value + 1)}>
           <Text style={{ color: colors.accentText }}>Try again</Text>
         </TouchableOpacity>
-        <TouchableOpacity accessibilityRole="button" onPress={() => void signOut(auth).catch(() => setSetupError('Could not sign out. Try again.'))}>
+        <TouchableOpacity testID="startup-signout" accessibilityRole="button" onPress={() => void signOut(auth).then(() => setRetry((value) => value + 1)).catch(() => setSetupError('Could not sign out. Try again.'))}>
           <Text style={{ color: colors.textPrimary }}>Sign out</Text>
         </TouchableOpacity>
       </View>
@@ -104,7 +130,7 @@ export default function RootNavigator() {
 
   if (checkingAuth) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+      <View testID="startup-loading" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
         <ActivityIndicator color={colors.accentFill} />
       </View>
     );
