@@ -62,6 +62,13 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.passway.app',
+    versionCode: 6,
+    allowBackup: false,
+    blockedPermissions: [
+      'android.permission.SYSTEM_ALERT_WINDOW',
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+    ],
     softwareKeyboardLayoutMode: 'resize',
     googleServicesFile: googleServicesJson,
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
@@ -77,6 +84,7 @@ const config: ExpoConfig = {
     'expo-notifications',
     './plugins/withFirebaseNoSpm',
     './plugins/withTestLabDetection',
+    './plugins/withAndroidDataProtection',
     ['expo-splash-screen', { backgroundColor: '#0B0D11', image: './assets/splash-icon.png', imageWidth: 96 }],
     ['expo-system-ui'],
   ],

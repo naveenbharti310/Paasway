@@ -27,6 +27,12 @@ test('denied location permission never requests a position',async()=>{
 
 
 function buildConfig(env){return load('../app.config.ts',{fs:{existsSync:()=>true},child_process:{execSync(){throw Error('unexpected build execution')}}},{process:{env}});}
+test('Android release configuration disables backup and unnecessary overlay/storage access',()=>{
+ const config=buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK:'on'}).default;
+ assert.equal(config.android.allowBackup,false);
+ for(const permission of ['android.permission.SYSTEM_ALERT_WINDOW','android.permission.READ_EXTERNAL_STORAGE','android.permission.WRITE_EXTERNAL_STORAGE'])assert.ok(config.android.blockedPermissions.includes(permission));
+ assert.ok(config.plugins.includes('./plugins/withAndroidDataProtection'));
+});
 test('production build refuses an inherited App Check bypass',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_APP_CHECK:'off'}),/must not disable App Check/);});
 test('production defaults keep App Check on',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_OTP_PROVIDER:'2factor'}).default.name,'Passway');});
 test('diagnostic bypass stays restricted to the explicit internal profile',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_DIAGNOSTICS:'1'}),/restricted/);assert.equal(buildConfig({EAS_BUILD_PROFILE:'play-diagnostics',EXPO_PUBLIC_DIAGNOSTICS:'1',EXPO_PUBLIC_APP_CHECK:'off'}).default.name,'Passway');});
