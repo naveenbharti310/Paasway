@@ -1,5 +1,21 @@
-// Native Firebase errors carry codes such as "functions/unavailable" or
-// "auth/too-many-requests". The service prefix is dropped before matching.
+// Auth/web errors carry service prefixes. RNFirebase 26 callable errors use
+// bare codes; normalize only at the callable boundary, not for arbitrary SDKs.
+const CALLABLE_CODES = new Set([
+  'cancelled', 'unknown', 'invalid-argument', 'deadline-exceeded', 'not-found',
+  'already-exists', 'permission-denied', 'unauthenticated', 'resource-exhausted',
+  'failed-precondition', 'aborted', 'out-of-range', 'unimplemented', 'internal',
+  'unavailable', 'data-loss',
+]);
+
+export function normalizeCallableError(error: unknown): unknown {
+  if (!(error instanceof Error) || !('code' in error)) return error;
+  const code = (error as Error & { code: unknown }).code;
+  if (typeof code !== 'string' || !CALLABLE_CODES.has(code)) return error;
+  // Do not mutate SDK errors or copy opaque details, which may contain private
+  // data. Existing prefixed errors and non-callable exceptions stay untouched.
+  return Object.assign(new Error(error.message), { code: `functions/${code}` });
+}
+
 const MESSAGES: Record<string, string> = {
   'network-request-failed': 'Could not connect. Check your internet connection and try again.',
   unavailable: 'Could not connect. Check your internet connection and try again.',

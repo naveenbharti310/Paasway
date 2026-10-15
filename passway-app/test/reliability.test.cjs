@@ -53,3 +53,40 @@ test('store release profiles reject visible fictional-number helpers',()=>{for(c
 test('dedicated store-attestation profile is independent of diagnostic bypass profiles',()=>{const eas=JSON.parse(fs.readFileSync(path.join(__dirname,'../eas.json'),'utf8'));const p=eas.build['play-attestation'];assert.ok(p);assert.equal(p.extends,'production');assert.equal(p.distribution,'store');assert.equal(p.android.buildType,'app-bundle');assert.equal(p.env.EXPO_PUBLIC_APP_CHECK,'on');assert.equal(p.env.EXPO_PUBLIC_DIAGNOSTICS,'0');assert.equal(eas.submit['play-attestation'].android.track,'internal');assert.equal(eas.submit['play-attestation'].android.releaseStatus,'draft');});
 test('attestation configuration is valid with verification enabled',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK:'on',EXPO_PUBLIC_DIAGNOSTICS:'0',EXPO_PUBLIC_SHOW_TEST_NUMBERS:'0'}).default.name,'Passway');});
 test('internal development builds may use registered debug credentials',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'development',EXPO_PUBLIC_APP_CHECK:'on',EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN:'synthetic-debug-token'}).default.name,'Passway');});
+
+// RNFirebase 26 callable errors are unprefixed; the web SDK remains prefixed.
+const errorBoundary = load('services/errors.ts', {}, { Error });
+for (const code of ['not-found', 'failed-precondition', 'invalid-argument', 'permission-denied', 'unauthenticated', 'resource-exhausted', 'unavailable', 'deadline-exceeded', 'internal', 'unknown']) {
+ test(`native callable ${code} is namespaced at the callable boundary`, () => {
+  const source = Object.assign(new Error('Server-written domain explanation'), { code });
+  const normalized = errorBoundary.normalizeCallableError(source);
+  assert.equal(normalized.code, `functions/${code}`);
+  assert.equal(normalized.message, source.message);
+  assert.equal(source.code, code); // Never mutate a shared SDK exception.
+  if (code === 'not-found') assert.equal(errorBoundary.errorMessage(normalized, 'fallback'), source.message);
+  if (code === 'internal' || code === 'unknown') assert.equal(errorBoundary.errorMessage(normalized, 'fallback'), 'fallback');
+ });
+}
+test('callable normalization preserves already-namespaced and unrelated errors', () => {
+ for (const code of ['functions/not-found', 'auth/invalid-verification-code', 'firestore/permission-denied', 'unexpected-provider-code']) {
+  const error = Object.assign(new Error('technical details'), { code });
+  assert.equal(errorBoundary.normalizeCallableError(error), error);
+ }
+ for (const error of [null, 'failure', new Error('offline'), { code: 'not-found', message: 'not a real SDK Error' }]) assert.equal(errorBoundary.normalizeCallableError(error), error);
+});
+test('callable entrypoint normalizes native failures while retaining successful data', async () => {
+ const injected = Object.assign(new Error('That code is not active. Ask them to generate a new one.'), { code: 'not-found' });
+ const mocks = {
+  '@react-native-firebase/app': { getApp: () => ({}) },
+  '@react-native-firebase/auth': { getAuth: () => ({}) },
+  '@react-native-firebase/firestore': { getFirestore: () => ({}) },
+  '@react-native-firebase/functions': { getFunctions: () => ({}), httpsCallable: () => async () => ({ data: { ok: true } }), httpsCallableFromUrl: () => async () => { throw injected; } },
+  '@react-native-firebase/app-check': {},
+  '../services/errors': errorBoundary,
+ };
+ const env = { EXPO_PUBLIC_APP_CHECK: 'off', EXPO_PUBLIC_API_URL: 'https://api.test' };
+ const external = load('firebase/client.ts', mocks, { Error, process: { env } });
+ await assert.rejects(external.callable('redeemTid')({}), error => error.code === 'functions/not-found' && errorBoundary.errorMessage(error, 'fallback') === injected.message);
+ const direct = load('firebase/client.ts', mocks, { Error, process: { env: { EXPO_PUBLIC_APP_CHECK: 'off' } } });
+ assert.equal((await direct.callable('ok')({})).ok, true);
+});
