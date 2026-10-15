@@ -37,3 +37,13 @@ test('the actual verification adapter bounds a stalled native Firebase exchange'
  const h=phoneHarness({fetch:async url=>new Response(JSON.stringify({result:url.endsWith('otpSend')?{challengeId:'test-challenge'}:{token:'custom-token-test'}})),customSignIn:()=>new Promise(()=>{})});
  const c=await h.beginPhoneSignIn('+919876543210');await assert.rejects(c.confirm('123456'),e=>e.code==='functions/deadline-exceeded');assert.equal(h.stats().custom,1);assert.equal(h.stats().fallback,0);
 });
+
+// Release configuration must fail before Expo bundles public debug credentials.
+test('production rejects public App Check debug tokens',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN:'synthetic-debug-token'}),/debug token/i);});
+test('attestation profile cannot disable App Check',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK:'off'}),/must not disable App Check/);});
+test('attestation profile rejects public debug tokens',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN:'synthetic-debug-token'}),/debug token/i);});
+test('unknown App Check settings fail instead of silently choosing a provider',()=>{assert.throws(()=>buildConfig({EXPO_PUBLIC_APP_CHECK:'OFF'}),/App Check setting/i);});
+test('store release profiles reject visible fictional-number helpers',()=>{for(const profile of ['production','play-attestation'])assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:profile,EXPO_PUBLIC_SHOW_TEST_NUMBERS:'1'}),/test number/i);});
+test('dedicated store-attestation profile is independent of diagnostic bypass profiles',()=>{const eas=JSON.parse(fs.readFileSync(path.join(__dirname,'../eas.json'),'utf8'));const p=eas.build['play-attestation'];assert.ok(p);assert.equal(p.extends,'production');assert.equal(p.distribution,'store');assert.equal(p.android.buildType,'app-bundle');assert.equal(p.env.EXPO_PUBLIC_APP_CHECK,'on');assert.equal(p.env.EXPO_PUBLIC_DIAGNOSTICS,'0');assert.equal(eas.submit['play-attestation'].android.track,'internal');assert.equal(eas.submit['play-attestation'].android.releaseStatus,'draft');});
+test('attestation configuration is valid with verification enabled',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK:'on',EXPO_PUBLIC_DIAGNOSTICS:'0',EXPO_PUBLIC_SHOW_TEST_NUMBERS:'0'}).default.name,'Passway');});
+test('internal development builds may use registered debug credentials',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'development',EXPO_PUBLIC_APP_CHECK:'on',EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN:'synthetic-debug-token'}).default.name,'Passway');});

@@ -40,6 +40,18 @@
         "EXPO_PUBLIC_API_URL": "https://passway-api.vercel.app"
       }
     },
+    "play-attestation": {
+      "extends": "production",
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_CHECK": "on",
+        "EXPO_PUBLIC_DIAGNOSTICS": "0",
+        "EXPO_PUBLIC_SHOW_TEST_NUMBERS": "0"
+      }
+    },
     "play-testing": {
       "extends": "production",
       "distribution": "store",
@@ -62,6 +74,12 @@
   },
   "submit": {
     "production": {},
+    "play-attestation": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
+    },
     "play-testing": {
       "android": {
         "track": "internal",
