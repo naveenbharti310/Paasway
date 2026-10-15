@@ -27,6 +27,11 @@ if (process.env.EXPO_PUBLIC_DIAGNOSTICS === '1' && process.env.EAS_BUILD_PROFILE
   throw new Error('Diagnostics and fictional test login are restricted to the play-diagnostics build profile.');
 }
 
+// Production must not inherit the internal APK's App Check bypass.
+if (process.env.EAS_BUILD_PROFILE === 'production' && process.env.EXPO_PUBLIC_APP_CHECK === 'off') {
+  throw new Error('Production builds must not disable App Check. Use an internal testing profile instead.');
+}
+
 const config: ExpoConfig = {
   name: 'Passway',
   slug: 'passway',

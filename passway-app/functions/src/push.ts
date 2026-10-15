@@ -10,6 +10,8 @@ export async function sendPushNotification(pushToken: unknown, title: string, bo
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ to: pushToken, title, body, data, sound: 'default' }),
+      signal: AbortSignal.timeout(4000),
+      redirect: 'error',
     });
     const ticket = await response.json() as { data?: { status?: string; details?: { error?: string } } };
     if (!response.ok || ticket.data?.status === 'error') log.warn('Expo rejected a notification.', { error: ticket.data?.details?.error });

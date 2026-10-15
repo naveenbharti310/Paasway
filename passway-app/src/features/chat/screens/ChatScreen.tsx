@@ -4,7 +4,8 @@ import { View, Text, TextInput, TouchableOpacity, Pressable, FlatList, StyleShee
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, orderBy, onSnapshot, doc, limitToLast } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
-import { sendMessage } from '../api/messages';
+import { sendMessage, newMessageId } from '../api/messages';
+import { createMessageRetryState } from '../messageAttempt';
 import { endConnection } from '../../connections/api/connections';
 import { fileReport, blockUser } from '../../safety/api/reports';
 import { colors } from '../../../theme/colors';
@@ -66,6 +67,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [draft, setDraft] = useState('');
+  const messageAttempts = useRef(createMessageRetryState(newMessageId));
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -186,7 +188,9 @@ export default function ChatScreen() {
     setError(null);
     try {
       nearBottom.current = true;
-      const result = await sendMessage({ connectionId, content: text, ...(replyingTo ? { replyTo: replyingTo.messageId } : {}) });
+      const attempt = messageAttempts.current.forMessage(connectionId, text, replyingTo?.messageId);
+      const result = await sendMessage(attempt);
+      messageAttempts.current.delivered(attempt.clientMessageId);
       setDraft((current) => current.trim() === text ? '' : current);
       setReplyingTo(null);
       if (result.earlyContactShare) setSafetyNotice(true);

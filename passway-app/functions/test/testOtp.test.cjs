@@ -8,7 +8,8 @@ const originalFetch = global.fetch, originalNow = Date.now;
 const req = (name, data, headers = {}) => handleTestOtp(new Request(`https://test/api/${name}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(data) }), name);
 const phone = '+919876543210';
 beforeEach(() => {
-  now = originalNow(); Date.now = () => now;
+  // Deterministic mid-window clock: tests must not flake near an hour/day boundary.
+  now = Date.UTC(2026, 0, 15, 12, 10); Date.now = () => now;
   process.env.ENFORCE_APP_CHECK = 'false';
   process.env.TWOFACTOR_ENABLED = 'true'; process.env.TWOFACTOR_DAILY_LIMIT = '50';
   process.env.TWOFACTOR_TEST_ENABLED = 'true'; process.env.TWOFACTOR_API_KEY = 'SECRET_TEST_ONLY';
@@ -124,4 +125,18 @@ test('fictional diagnostic numbers never call the real SMS provider', async () =
     assert.equal((await req('testOtpSend', { phone: p })).status, 400);
   }
   assert.equal(calls.length, 0);
+});
+
+
+test('the IP budget resets at the next fixed UTC hour, not on rejection', async () => {
+  for (let n=0;n<20;n++) await send(`+91910000${String(n).padStart(4,'0')}`);
+  assert.equal((await req('otpSend',{phone:'+919111112222'})).status,429);
+  now += 3600000;
+  assert.equal((await req('otpSend',{phone:'+919111112222'})).status,200);
+});
+test('the global SMS budget resets at the next UTC day', async () => {
+  process.env.TWOFACTOR_DAILY_LIMIT='1';await send();
+  assert.equal((await req('otpSend',{phone:'+919111112222'})).status,429);
+  now += 86400000;
+  assert.equal((await req('otpSend',{phone:'+919111112222'})).status,200);
 });

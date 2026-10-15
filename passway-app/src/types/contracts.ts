@@ -15,7 +15,7 @@ export interface RespondResponse { connectionId?: string }
 export interface TidRequest { tid: string }
 export interface ConnectionRequestBody { connectionId: string }
 
-export interface SendMessageRequest { connectionId: string; content: string; replyTo?: string }
+export interface SendMessageRequest { connectionId: string; content: string; replyTo?: string; clientMessageId?: string }
 export interface SendMessageResponse { flag: ModerationFlag; earlyContactShare: boolean }
 
 export interface FileReportRequest { connectionId: string; reportedId: string; reason: string }
