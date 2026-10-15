@@ -38,7 +38,9 @@ export const fileReport = authedCallable(async (uid, data) => {
     tx.create(reportRef, { reportId, reporterId: uid, reportedId, connectionId, reason, status: 'open', createdAt: now, deleteAt: hold });
     markEnded(tx, ref, connection, uid, now, { reportedAt: now, reportedBy: uid }, hold);
     recordBlock(tx, uid, reportedId, connectionId, now);
-    if (phoneHoldRef && phoneHold?.status !== 'banned') tx.set(phoneHoldRef, { status: 'reported', updatedAt: now, deleteAt: retentionDate(phoneHold?.deleteAt, new Date(now + REPORTED_HOLD_MS)) });
+    // Review is not a participation ban. Preserve under-age, banned and
+    // unknown administrative restrictions, including their original expiry.
+    if (phoneHoldRef && (!phoneHold || phoneHold.status === 'reported')) tx.set(phoneHoldRef, { status: 'reported', updatedAt: now, deleteAt: retentionDate(phoneHold?.deleteAt, new Date(now + REPORTED_HOLD_MS)) });
     if (reported.exists && reported.data()?.status === 'active') tx.update(reportedRef, { status: 'reported' });
   });
   await applyMessageRetention(ref);

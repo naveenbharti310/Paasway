@@ -323,3 +323,83 @@ test('a block racing with an alternate-chat send remains authoritative after com
 
 test('unknown recipient states deny real transaction reads and writes',async()=>{await seedConnection();await collection('users').doc('bob').update({status:'suspended'});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);});
 test('stale under-minimum metadata and malformed age confirmation cannot authorize real transactions',async()=>{await seedConnection();for(const patch of [{ageConfirmedAt:NaN},{ageConfirmedAt:Infinity},{ageConfirmedAt:0},{ageConfirmedAt:1,ageCheck:'under_minimum'}]){await collection('users').doc('alice').update(patch);await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'failed-precondition'});}assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);});
+
+test('a reviewed under-age phone stays restricted across real account deletion and recreation', async () => {
+  const firebase = require('../lib/lib/firebase');
+  const { confirmAge, deleteAccount } = require('../lib/handlers/accounts');
+  const { phoneHash } = require('../lib/lib/accounts');
+  const phone = '+919876543210', hash = phoneHash(phone);
+  const originalAuth = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  const confirm = (uid, birthDate) => confirmAge.run({ auth: { uid, token: { phone_number: phone } }, data: { birthDate } });
+  try {
+    await collection('users').doc('bob').set({ status: 'reported' });
+    await collection('accountHolds').doc(hash).set({ status: 'reported', deleteAt: new Date(Date.now() + 86400000) });
+    assert.deepEqual(await confirm('bob', `${new Date().getUTCFullYear() - 15}-01-01`), { confirmed: false });
+    assert.equal((await collection('accountHolds').doc(hash).get()).data().status, 'under_minimum');
+    await call(deleteAccount, {}, 'bob');
+    await collection('users').doc('recreated-bob').set({ status: 'active' });
+    assert.deepEqual(await confirm('recreated-bob', '1990-01-01'), { confirmed: false });
+    assert.equal((await collection('accountHolds').doc(hash).get()).data().status, 'under_minimum');
+  } finally { firebase.auth = originalAuth; }
+});
+
+for (const status of ['under_minimum', 'suspended']) {
+  test(`real reporting preserves the ${status} phone restriction`, async () => {
+    await seedConnection();
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    await collection('users').doc('bob').update({ phoneHash: 'held-bob' });
+    await collection('accountHolds').doc('held-bob').set(hold);
+    await call(fileReport, { connectionId: 'chat1', reportedId: 'bob', reason: 'Unsafe' });
+    const saved = (await collection('accountHolds').doc('held-bob').get()).data();
+    assert.equal(saved.status, status);
+    assert.equal(saved.updatedAt, hold.updatedAt);
+    assert.equal(saved.deleteAt.toMillis(), hold.deleteAt.getTime());
+    assert.equal((await collection('reports').get()).size, 1);
+  });
+
+  test(`real deletion preserves the ${status} phone restriction`, async () => {
+    const firebase = require('../lib/lib/firebase');
+    const originalAuth = firebase.auth;
+    firebase.auth = { deleteUser: async () => {} };
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    try {
+      await collection('users').doc('bob').update({ status: 'reported', phoneHash: 'held-bob' });
+      await collection('accountHolds').doc('held-bob').set(hold);
+      await call(require('../lib/handlers/accounts').deleteAccount, {}, 'bob');
+      const saved = (await collection('accountHolds').doc('held-bob').get()).data();
+      assert.equal(saved.status, status);
+      assert.equal(saved.updatedAt, hold.updatedAt);
+      assert.equal(saved.deleteAt.toMillis(), hold.deleteAt.getTime());
+      assert.equal((await collection('users').doc('bob').get()).exists, false);
+    } finally { firebase.auth = originalAuth; }
+  });
+}
+
+test('a concurrent rate-limit burst cannot exceed its committed budget', { timeout: 60000 }, async () => {
+  const { withinRateLimit } = require('../lib/lib/rateLimits');
+  const results = await Promise.all(Array.from({ length: 12 }, () => withinRateLimit('alice', 'burst_probe', 4, 60000)));
+  assert.equal(results.filter(Boolean).length, 4);
+  assert.equal(results.filter(value => value === false).length, 8);
+  const events = (await collection('rateLimits').doc('alice_burst_probe').get()).data().events;
+  assert.equal(events.length, 4);
+});
+
+test('a failed deletion job rotates behind another pending account instead of starving it', { timeout: 60000 }, async () => {
+  const firebase = require('../lib/lib/firebase');
+  const originalAuth = firebase.auth;
+  const { requestAccountDeletion, resumePendingAccountDeletions } = require('../lib/services/accountDeletion');
+  const attempts = [];
+  firebase.auth = { deleteUser: async uid => { attempts.push(uid); if (uid === 'alice') throw new Error('Injected Auth outage'); } };
+  try {
+    await requestAccountDeletion('alice');
+    await requestAccountDeletion('bob');
+    await collection('accountDeletions').doc('alice').update({ lastAttemptAt: 1 });
+    await collection('accountDeletions').doc('bob').update({ lastAttemptAt: 2 });
+    assert.equal(await resumePendingAccountDeletions(), 0);
+    assert.equal(await resumePendingAccountDeletions(), 1);
+    assert.deepEqual(attempts, ['alice', 'bob']);
+    assert.equal((await collection('accountDeletions').doc('alice').get()).data().status, 'pending');
+    assert.equal((await collection('accountDeletions').doc('bob').get()).data().status, 'complete');
+  } finally { firebase.auth = originalAuth; }
+});

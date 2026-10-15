@@ -199,6 +199,55 @@ const callWithPhone = (handler, data, user, phone = '+919876543210') => handler.
 const adultBirth = '1990-05-01';
 const childBirth = `${new Date().getUTCFullYear() - 15}-01-01`;
 
+test('a review hold cannot prevent persisting a new under-minimum phone restriction', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed(`accountHolds/${hash}`, { status: 'reported', deleteAt: new Date(Date.now() + 86400000) });
+  db.seed('users/carol', { status: 'reported' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: childBirth }, 'carol'), { confirmed: false });
+  assert.equal(db.read(`accountHolds/${hash}`).status, 'under_minimum');
+  db.seed('users/recreated', { status: 'active' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'recreated'), { confirmed: false });
+});
+
+for (const status of ['under_minimum', 'suspended', 'banned']) {
+  test(`reporting preserves an existing restrictive ${status} phone hold exactly`, async () => {
+    connection();
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, phoneHash: 'held-bob' });
+    db.seed('accountHolds/held-bob', hold);
+    const result = await call(fileReport, { connectionId: 'chat1', reportedId: 'bob', reason: 'Unsafe' });
+    assert.ok(db.read(`reports/${result.reportId}`));
+    assert.equal(db.read('connections/chat1').status, 'ended');
+    assert.deepEqual(db.read('accountHolds/held-bob'), hold);
+  });
+
+  test(`deletion of a reviewed account preserves its restrictive ${status} phone hold exactly`, async () => {
+    const originalAuth = firebase.auth;
+    firebase.auth = { deleteUser: async () => {} };
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: 'held-alice' });
+    db.seed('accountHolds/held-alice', hold);
+    try {
+      assert.deepEqual(await call(deleteAccount, {}), { pending: false });
+      assert.equal(db.read('users/alice'), undefined);
+      assert.equal(db.read('accountDeletions/alice').status, 'complete');
+      assert.deepEqual(db.read('accountHolds/held-alice'), hold);
+    } finally { firebase.auth = originalAuth; }
+  });
+}
+
+test('deletion may strengthen an under-minimum phone hold to a nonexpiring ban', async () => {
+  const originalAuth = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  db.seed('users/alice', { status: 'banned', phoneHash: 'held-alice' });
+  db.seed('accountHolds/held-alice', { status: 'under_minimum', deleteAt: new Date(Date.now() + 86400000) });
+  try {
+    await call(deleteAccount, {});
+    assert.equal(db.read('accountHolds/held-alice').status, 'banned');
+    assert.equal(db.read('accountHolds/held-alice').deleteAt, undefined);
+  } finally { firebase.auth = originalAuth; }
+});
+
 test('calculate age around a birthday', () => {
   assert.equal(accounts.ageOn('2000-06-15', new Date(Date.UTC(2018, 5, 14))), 17);
   assert.equal(accounts.ageOn('2000-06-15', new Date(Date.UTC(2018, 5, 15))), 18);

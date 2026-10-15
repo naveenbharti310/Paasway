@@ -54,7 +54,9 @@ export async function resumeAccountDeletion(uid: string): Promise<{ pending: boo
     const banned = job.previousStatus === 'banned' || current.data()?.status === 'banned';
     const reviewed = job.previousStatus === 'reported' || current.data()?.status === 'reported' || reported.docs.length > 0;
     if (hold?.status === 'banned' || (!banned && !reviewed)) return;
-    if (!banned && hold?.status === 'reported') return;
+    // Deletion must not replace a restrictive/unknown phone policy with the
+    // weaker review state. A permanent ban may still strengthen any hold.
+    if (!banned && hold) return;
     tx.set(heldRef, { status: banned ? 'banned' : 'reported', updatedAt: Date.now(), ...(!banned ? { deleteAt: new Date(Date.now() + REPORTED_HOLD_MS) } : {}) });
   });
   // Keep the deleting profile until this external operation succeeds. A crash

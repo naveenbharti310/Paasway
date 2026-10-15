@@ -6,7 +6,10 @@ import { userRef, holdRef, phoneHash, ageOn, validBirthDate, hasAgeConfirmation,
 import { requestAccountDeletion, resumeAccountDeletion } from '../services/accountDeletion';
 
 type HoldStatus = 'banned' | 'reported' | 'under_minimum';
-const SEVERITY: Record<HoldStatus, number> = { under_minimum: 1, reported: 2, banned: 3 };
+// Review permits participation after age confirmation; under-minimum does not.
+// A review hold must never prevent persisting an age restriction for the phone,
+// or deletion/recreation could turn an under-age answer into an adult account.
+const SEVERITY: Record<HoldStatus, number> = { reported: 1, under_minimum: 2, banned: 3 };
 const UNDER_MINIMUM = `Passway is only for people aged ${MINIMUM_AGE} and over.`;
 
 function strongerHold(current: DocumentData | undefined, next: HoldStatus): boolean {
