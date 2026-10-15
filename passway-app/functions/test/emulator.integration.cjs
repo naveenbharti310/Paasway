@@ -262,3 +262,44 @@ test('late report after completed deletion preserves the phone safety hold',asyn
 });
 test('message API blocks the other participant immediately after deletion is claimed',async()=>{await seedConnection();await require('../lib/services/accountDeletion').requestAccountDeletion('alice');await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat1'},'bob'),{code:'failed-precondition'});});
 test('message read budget rejects excess refreshes before loading a chat',async()=>{const now=Date.now();await collection('rateLimits').doc('alice_message_read').set({events:Array(240).fill(now)});await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat1'}),{code:'resource-exhausted'});});
+
+test('blocking a person prevents sends through another active pairing in either direction',async()=>{
+ await seedConnection();await collection('connections').doc('chat2').set({connectionId:'chat2',userA:'alice',userB:'bob',status:'active',createdAt:Date.now()});
+ await call(blockUser,{connectionId:'chat1'},'bob');
+ for(const uid of ['alice','bob'])await assert.rejects(call(sendMessage,{connectionId:'chat2',content:'alternate channel bypass'},uid),{code:'not-found'});
+ assert.equal((await collection('connections').doc('chat2').collection('messages').get()).size,0);
+});
+test('blocking a person prevents reading another active pairing',async()=>{
+ await seedConnection();const c=collection('connections').doc('chat2');await c.set({connectionId:'chat2',userA:'alice',userB:'bob',status:'active',createdAt:Date.now()});await c.collection('messages').doc('m').set({senderId:'alice',content:'private',sentAt:Date.now(),moderationFlag:'none'});
+ await call(blockUser,{connectionId:'chat1'},'bob');
+ for(const uid of ['alice','bob'])await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat2'},uid),{code:'not-found'});
+});
+test('report-created blocks also deny alternate pairing sends and reads',async()=>{
+ await seedConnection();await collection('connections').doc('chat2').set({connectionId:'chat2',userA:'alice',userB:'bob',status:'active',createdAt:Date.now()});await call(fileReport,{connectionId:'chat1',reportedId:'alice',reason:'Unsafe'},'bob');
+ await assert.rejects(call(sendMessage,{connectionId:'chat2',content:'report bypass'},'alice'),{code:'not-found'});
+ await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat2'},'alice'),{code:'not-found'});
+});
+test('a committed message retry cannot bypass a later person-level block',async()=>{
+ await seedConnection();await collection('connections').doc('chat2').set({connectionId:'chat2',userA:'alice',userB:'bob',status:'active',createdAt:Date.now()});const data={connectionId:'chat2',content:'original',clientMessageId:'blocked-replay-key-0001'};await call(sendMessage,data,'alice');await call(blockUser,{connectionId:'chat1'},'bob');await assert.rejects(call(sendMessage,data,'alice'),{code:'not-found'});assert.equal((await collection('connections').doc('chat2').collection('messages').get()).size,1);
+});
+test('a person-level block leaves unrelated participant pairs usable',async()=>{
+ await seedConnection();await collection('connections').doc('chat-ac').set({connectionId:'chat-ac',userA:'alice',userB:'carol',status:'active',createdAt:Date.now()});await call(blockUser,{connectionId:'chat1'},'bob');await call(sendMessage,{connectionId:'chat-ac',content:'unrelated pair works'},'alice');const result=await call(require('../lib/handlers/messages').getMessages,{connectionId:'chat-ac'},'carol');assert.equal(result.messages.length,1);assert.equal(result.messages[0].content,'unrelated pair works');
+});
+test('malformed message read selectors fail before creating rate-limit state',async()=>{
+ const fn=require('../lib/handlers/messages').getMessages;
+ for(const connectionId of [null,undefined,{},[],0,NaN,Infinity,'',' ','../chat1','chat1/child','x'.repeat(129)])await assert.rejects(call(fn,{connectionId}),{code:'invalid-argument'});
+ await assert.rejects(call(fn,{connectionId:'chat1',latest:'true'}),{code:'invalid-argument'});
+ assert.equal((await collection('rateLimits').get()).size,0);assert.equal((await collection('connections').get()).size,0);
+});
+test('a block racing with an alternate-chat send remains authoritative after commit', {timeout:60000},async()=>{
+ // Repeat fresh channels, not repeated reads of one already-blocked channel.
+ for(let round=0;round<10;round++){
+  await Promise.all([collection('blocks').doc('alice:bob').delete(),collection('blocks').doc('bob:alice').delete()]);
+  await seedConnection();const connectionId='race-'+round,c=collection('connections').doc(connectionId);await c.set({connectionId,userA:'alice',userB:'bob',status:'active',createdAt:Date.now()});
+  const [sent,blocked]=await Promise.allSettled([call(sendMessage,{connectionId,content:'racing send'},'alice'),call(blockUser,{connectionId:'chat1'},'bob')]);
+  assert.equal(blocked.status,'fulfilled');if(sent.status==='rejected')assert.equal(sent.reason.code,'not-found');
+  await assert.rejects(call(sendMessage,{connectionId,content:'after block commit'},'alice'),{code:'not-found'});
+  await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId},'alice'),{code:'not-found'});
+  assert.equal((await c.collection('messages').get()).size,sent.status==='fulfilled'?1:0);
+ }
+});

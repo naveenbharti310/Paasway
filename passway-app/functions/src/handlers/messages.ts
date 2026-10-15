@@ -3,6 +3,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { assertAccountActive, userRef } from '../lib/accounts';
+import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { documentId, text, otherParticipant, type Participants } from '../lib/validation';
 import { screenMessage, type ModerationResult } from '../moderation';
@@ -45,6 +46,9 @@ export const sendMessage = authedCallable(async (uid, data) => {
     if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const recipient = otherParticipant(connection as Participants, uid);
     await assertAccountActive(recipient, tx);
+    // A pair may already have more than one active conversation. Enforce
+    // the person-level block transactionally, including retry acknowledgements.
+    await assertNotBlocked(tx, uid, recipient);
     if (key !== undefined) {
       const previous = (await tx.get(messageRef)).data();
       if (previous) return { recipient, created: false, result: replay(previous) };
@@ -88,6 +92,7 @@ export const getMessages = authedCallable(async (uid, data) => {
     if (!connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const other = otherParticipant(connection as Participants, uid);
     await assertAccountActive(other, tx);
+    await assertNotBlocked(tx, uid, other);
     const rows = await tx.get(ref.collection('messages').where('sentAt', '>', Date.now() - MESSAGE_RETENTION_MS).orderBy('sentAt', 'desc').limit(data.latest ? 1 : 200));
     return rows.docs.map((row) => {
       const m = row.data();

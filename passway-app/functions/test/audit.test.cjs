@@ -7,7 +7,7 @@ const codeGenerator = require('../lib/lib/tid');
 const originalRandomTid = codeGenerator.randomTid;
 const { generateTid, redeemTid, deactivateTid } = require('../lib/handlers/tids');
 const { respondToRequest, endConnection } = require('../lib/handlers/connections');
-const { sendMessage } = require('../lib/handlers/messages');
+const { sendMessage, getMessages } = require('../lib/handlers/messages');
 const { fileReport, blockUser } = require('../lib/handlers/reports');
 const { closeIdleConnections } = require('../lib/services/connections');
 const validation = require('../lib/lib/validation');
@@ -54,7 +54,7 @@ test('generate cryptographically random four character codes', () => { for (let 
 test('preserve a longer retention hold', () => assert.equal(retentionDate(new Date(9000), new Date(1000)).getTime(), 9000));
 test('read Firestore timestamp retention values', () => assert.equal(retentionDate({ toMillis: () => 9000 }, new Date(1000)).getTime(), 9000));
 
-for (const handler of [generateTid, redeemTid, deactivateTid, respondToRequest, endConnection, sendMessage, fileReport]) {
+for (const handler of [generateTid, redeemTid, deactivateTid, respondToRequest, endConnection, sendMessage, getMessages, fileReport, blockUser]) {
   test(`authentication required for ${handler.name || 'callable'}`, async () => assert.rejects(call(handler, {}, null), { code: 'unauthenticated' }));
 }
 test('allocate a code without overwriting an existing pending code', async () => {
