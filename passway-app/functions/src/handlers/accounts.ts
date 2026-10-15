@@ -2,7 +2,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import type { DocumentData } from 'firebase-admin/firestore';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
-import { userRef, holdRef, phoneHash, ageOn, validBirthDate, MINIMUM_AGE } from '../lib/accounts';
+import { userRef, holdRef, phoneHash, ageOn, validBirthDate, hasAgeConfirmation, MINIMUM_AGE } from '../lib/accounts';
 import { requestAccountDeletion, resumeAccountDeletion } from '../services/accountDeletion';
 
 type HoldStatus = 'banned' | 'reported' | 'under_minimum';
@@ -30,8 +30,14 @@ export const confirmAge = authedCallable(async (uid, data, caller) => {
     const hold = hash ? (await tx.get(holdRef(hash))).data() : undefined;
     const now = Date.now();
     if (user.status === 'deleting') throw new HttpsError('failed-precondition', 'Account deletion is in progress.');
+    if (user.status !== 'active' && user.status !== 'reported') {
+      throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
+    }
+    if (hold && !['banned', 'reported', 'under_minimum'].includes(hold.status)) {
+      throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
+    }
     if (user.ageCheck === 'under_minimum') throw new HttpsError('failed-precondition', UNDER_MINIMUM);
-    if (typeof user.ageConfirmedAt === 'number') return { confirmed: true };
+    if (hasAgeConfirmation(user.ageConfirmedAt) && hold?.status !== 'under_minimum') return { confirmed: true };
     if (!adult || hold?.status === 'under_minimum') {
       tx.update(ref, { ageCheck: 'under_minimum', ageCheckedAt: now, ...(hash ? { phoneHash: hash } : {}) });
       if (hash && !adult && strongerHold(hold, 'under_minimum')) {

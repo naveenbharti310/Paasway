@@ -19,6 +19,10 @@ export function holdRef(hash: string) {
   return db.collection('accountHolds').doc(hash);
 }
 
+export function hasAgeConfirmation(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 // Confirms an account can take part in connections: it exists, it has passed
 // the age check, it is not banned, and its phone number is not under a ban hold.
 export async function assertAccountActive(uid: string, tx: Transaction): Promise<DocumentData> {
@@ -29,12 +33,20 @@ export async function assertAccountActive(uid: string, tx: Transaction): Promise
   // Allow known eligible states, rather than permitting any state that is
   // not explicitly banned. New administrative states must fail closed.
   if (user.status !== 'active' && user.status !== 'reported') throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
-  if (user.ageCheck === 'under_minimum' || typeof user.ageConfirmedAt !== 'number' || !Number.isFinite(user.ageConfirmedAt) || user.ageConfirmedAt <= 0) {
+  if (user.ageCheck === 'under_minimum' || !hasAgeConfirmation(user.ageConfirmedAt)) {
     throw new HttpsError('failed-precondition', 'Confirm your age before connecting.');
   }
   if (typeof user.phoneHash === 'string') {
     const hold = await tx.get(holdRef(user.phoneHash));
-    if (hold.data()?.status === 'banned') throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
+    const policy = hold.data();
+    if (policy?.status === 'under_minimum') {
+      throw new HttpsError('failed-precondition', 'Confirm your age before connecting.');
+    }
+    // A stale account profile cannot override a phone-level eligibility hold.
+    // Unknown hold policies require explicit support, not implicit permission.
+    if (policy && policy.status !== 'reported') {
+      throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
+    }
   }
   return user;
 }

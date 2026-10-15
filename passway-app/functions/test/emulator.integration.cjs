@@ -31,6 +31,23 @@ async function seedCode() {
 async function seedConnection() {
   await collection('connections').doc('chat1').set({ connectionId: 'chat1', userA: 'alice', userB: 'bob', userAName: 'Alice', userBName: 'Bob', status: 'active', createdAt: Date.now() });
 }
+test('real transactions enforce an under-minimum phone hold over stale adult metadata', async () => {
+  await seedConnection();
+  await collection('accountHolds').doc('held-phone').set({ status: 'under_minimum' });
+  await collection('users').doc('alice').update({ phoneHash: 'held-phone' });
+  await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'failed-precondition' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Denied held account' }), { code: 'failed-precondition' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Denied held recipient' }, 'bob'), { code: 'failed-precondition' });
+  assert.equal((await collection('tids').get()).size, 0);
+  assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size, 0);
+});
+test('real transactions deny unknown phone-hold policy without partial effects', async () => {
+  await seedConnection();
+  await collection('accountHolds').doc('unknown-hold').set({ status: 'suspended' });
+  await collection('users').doc('alice').update({ phoneHash: 'unknown-hold' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Denied unknown hold' }), { code: 'permission-denied' });
+  assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size, 0);
+});
 test('concurrent redemption creates only one request', { timeout: 60000 }, async () => {
   await seedCode();
   const results = await Promise.allSettled(['bob', 'carol'].map((uid) => call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: uid }, uid)));
