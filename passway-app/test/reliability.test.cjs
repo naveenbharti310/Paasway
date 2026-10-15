@@ -17,11 +17,11 @@ test('user-facing billing errors do not disclose diagnostic credentials',()=>{co
 
 test('native location acquisition cannot hold the connection form indefinitely',async()=>{
  let requestedMs;
- const {getCurrentLocation}=load('services/location.ts',{'expo-location':{requestForegroundPermissionsAsync:async()=>({status:'granted'}),Accuracy:{Balanced:3},getCurrentPositionAsync:()=>new Promise(()=>{})},'./withDeadline':{withDeadline:(work,ms)=>{requestedMs=ms;return withDeadline(work,10)}}});
+ const {getCurrentLocation}=load('services/location.ts',{'expo-location':{getForegroundPermissionsAsync:async()=>({status:'granted'}),requestForegroundPermissionsAsync:async()=>({status:'granted'}),Accuracy:{Balanced:3},getCurrentPositionAsync:()=>new Promise(()=>{})},'./withDeadline':{withDeadline:(work,ms)=>{requestedMs=ms;return withDeadline(work,10)}}});
  await assert.rejects(getCurrentLocation(),e=>e.code==='functions/deadline-exceeded');assert.equal(requestedMs,15000);
 });
 test('denied location permission never requests a position',async()=>{
- let calls=0;const {getCurrentLocation}=load('services/location.ts',{'expo-location':{requestForegroundPermissionsAsync:async()=>({status:'denied'}),Accuracy:{Balanced:3},getCurrentPositionAsync:async()=>{calls++}},'./withDeadline':{withDeadline}});
+ let calls=0;const {getCurrentLocation}=load('services/location.ts',{'expo-location':{getForegroundPermissionsAsync:async()=>({status:'denied',canAskAgain:true}),requestForegroundPermissionsAsync:async()=>({status:'denied'}),Accuracy:{Balanced:3},getCurrentPositionAsync:async()=>{calls++}},'./withDeadline':{withDeadline}});
  await assert.rejects(getCurrentLocation(),/Location access/);assert.equal(calls,0);
 });
 
@@ -136,4 +136,42 @@ test('actual Chats loading markup exposes its progressbar name in React Native W
  }});
  const markup = renderToStaticMarkup(React.createElement(m.exports.default));
  assert.match(markup, /<div(?=[^>]*role="progressbar")(?=[^>]*aria-label="Loading chats")[^>]*>/);
+});
+
+function locationHarness({ permission = { status: 'granted', canAskAgain: true }, requested = { status: 'granted', canAskAgain: true }, check, request, locate } = {}) {
+ const counts = { checks: 0, requests: 0, positions: 0 };
+ const api = load('services/location.ts', { 'expo-location': {
+  getForegroundPermissionsAsync: async () => { counts.checks++; return check ? check() : permission; },
+  requestForegroundPermissionsAsync: async () => { counts.requests++; return request ? request() : requested; },
+  getCurrentPositionAsync: async () => { counts.positions++; return locate ? locate() : { coords: { latitude: 28.6, longitude: 77.2 } }; },
+  Accuracy: { Balanced: 3 },
+ }, './withDeadline': { withDeadline: work => withDeadline(work, 20) } });
+ return { ...api, counts };
+}
+test('already granted location never relaunches runtime permission activities', async () => {
+ const h = locationHarness();await h.getCurrentLocation();await h.getCurrentLocation();
+ assert.deepEqual(h.counts, { checks: 2, requests: 0, positions: 2 }); // Fresh position and permission state each time.
+});
+test('revoked location is rechecked instead of using cached granted state', async () => {
+ let calls = 0;const h = locationHarness({ check: () => ++calls === 1 ? { status: 'granted' } : { status: 'denied', canAskAgain: false } });
+ await h.getCurrentLocation();await assert.rejects(h.getCurrentLocation(), /Location access/);
+ assert.equal(h.counts.positions, 1);assert.equal(h.counts.requests, 0);
+});
+test('a denied but askable location permission is requested once before positioning', async () => {
+ const h = locationHarness({ permission: { status: 'denied', canAskAgain: true } });
+ await h.getCurrentLocation();assert.deepEqual(h.counts, { checks: 1, requests: 1, positions: 1 });
+});
+test('permanently denied location never launches another permission request', async () => {
+ const h = locationHarness({ permission: { status: 'denied', canAskAgain: false } });
+ await assert.rejects(h.getCurrentLocation(), /Location access/);assert.equal(h.counts.requests, 0);assert.equal(h.counts.positions, 0);
+});
+test('concurrent location intents share one pending permission prompt', async () => {
+ let resolve;const pending = new Promise(r => resolve = r);const h = locationHarness({ permission: { status: 'denied', canAskAgain: true }, request: () => pending });
+ const a = h.getCurrentLocation(), b = h.getCurrentLocation();await new Promise(r => setImmediate(r));
+ resolve({ status: 'granted' });await Promise.all([a,b]);assert.equal(h.counts.requests, 1);assert.equal(h.counts.positions, 2);
+});
+test('late permission approval after a deadline cannot start GPS work', async () => {
+ let resolve;const pending = new Promise(r => resolve = r);const h = locationHarness({ permission: { status: 'denied', canAskAgain: true }, request: () => pending });
+ await assert.rejects(h.getCurrentLocation(), e => e.code === 'functions/deadline-exceeded');
+ resolve({ status: 'granted' });await new Promise(r => setImmediate(r));assert.equal(h.counts.positions, 0);
 });
