@@ -8,6 +8,7 @@ import { onAuthStateChanged, signOut, type User } from '@react-native-firebase/a
 import { auth } from '../firebase/client';
 import { findActiveConnection } from '../features/connections/api/activeConnection';
 import { ensureUserDoc, type AccountStage } from '../features/auth/api/ensureUser';
+import DeletionRecoveryScreen from '../features/account/DeletionRecoveryScreen';
 import WelcomeScreen from '../features/onboarding/screens/WelcomeScreen';
 import AgeCheckScreen from '../features/onboarding/screens/AgeCheckScreen';
 import UnderAgeScreen from '../features/onboarding/screens/UnderAgeScreen';
@@ -91,7 +92,7 @@ export default function RootNavigator() {
         setStage(nextStage);
         setResumeConnectionId(resume);
         setCheckingAuth(false);
-        if (u && Platform.OS !== 'web') {
+        if (u && nextStage === 'ready' && Platform.OS !== 'web') {
           const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
           void refreshPush();
           pushListener = Notifications.addPushTokenListener((token) => {
@@ -136,6 +137,7 @@ export default function RootNavigator() {
     );
   }
 
+  if (user && stage === 'deleting') return <DeletionRecoveryScreen />;
   if (user && stage === 'under_minimum') return <UnderAgeScreen />;
   if (user && stage === 'needs_age') return <AgeCheckScreen onResult={(confirmed) => setStage(confirmed ? 'ready' : 'under_minimum')} />;
 

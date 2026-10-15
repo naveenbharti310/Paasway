@@ -25,6 +25,7 @@ export async function assertAccountActive(uid: string, tx: Transaction): Promise
   const snap = await tx.get(userRef(uid));
   const user = snap.data();
   if (!snap.exists || !user) throw new HttpsError('failed-precondition', 'Your account is not ready. Sign in again.');
+  if (user.status === 'deleting') throw new HttpsError('failed-precondition', 'Account deletion is in progress.');
   if (user.status === 'banned') throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
   if (typeof user.ageConfirmedAt !== 'number') throw new HttpsError('failed-precondition', 'Confirm your age before connecting.');
   if (typeof user.phoneHash === 'string') {

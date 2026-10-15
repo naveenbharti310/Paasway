@@ -1,7 +1,7 @@
 import { doc, runTransaction } from '@react-native-firebase/firestore';
 import { db } from '../../../firebase/client';
 
-export type AccountStage = 'needs_age' | 'under_minimum' | 'ready';
+export type AccountStage = 'needs_age' | 'under_minimum' | 'deleting' | 'ready';
 
 // Creates the profile on first sign in and reports which step the account is at.
 // The transaction needs a connection, so a brief network drop when the app
@@ -27,6 +27,7 @@ function loadStage(uid: string): Promise<AccountStage> {
       return 'needs_age' as const;
     }
     const data = snap.data() ?? {};
+    if (data.status === 'deleting') return 'deleting' as const;
     if (data.status === 'banned') throw new Error('This account cannot use Passway right now.');
     if (data.ageCheck === 'under_minimum') return 'under_minimum' as const;
     return typeof data.ageConfirmedAt === 'number' ? 'ready' as const : 'needs_age' as const;

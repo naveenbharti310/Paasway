@@ -52,7 +52,8 @@ export const sendMessage = authedCallable(async (uid, data) => {
     if (replyTo) {
       const quoted = await tx.get(ref.collection('messages').doc(replyTo));
       const deleteAt = quoted.data()?.deleteAt as { toMillis?: () => number } | undefined;
-      if (!quoted.exists || (deleteAt?.toMillis && deleteAt.toMillis() <= Date.now())) {
+      const quotedAt = quoted.data()?.sentAt;
+      if (!quoted.exists || typeof quotedAt !== 'number' || quotedAt <= Date.now() - MESSAGE_RETENTION_MS || (deleteAt?.toMillis && deleteAt.toMillis() <= Date.now())) {
         throw new HttpsError('failed-precondition', 'The message you replied to is no longer available.');
       }
     }
@@ -72,4 +73,28 @@ export const sendMessage = authedCallable(async (uid, data) => {
   });
   if (committed.created) await notifyUser(committed.recipient, 'Passway', 'You have a new message', { type: 'message', connectionId });
   return committed.result;
+});
+
+// Message bodies are served only here, never through direct client Firestore
+// reads. Safety-evidence retention must not extend participant read access.
+export const getMessages = authedCallable(async (uid, data) => {
+  const connectionId = documentId(data.connectionId, 'Connection');
+  if (data.latest !== undefined && typeof data.latest !== 'boolean') throw new HttpsError('invalid-argument', 'Latest must be a boolean.');
+  const ref = db.collection('connections').doc(connectionId);
+  if (!await withinRateLimit(uid, 'message_read', 240, 60000)) throw new HttpsError('resource-exhausted', 'Messages are refreshing too quickly. Try again shortly.');
+  const messages = await db.runTransaction(async (tx) => {
+    await assertAccountActive(uid, tx);
+    const connection = (await tx.get(ref)).data();
+    if (!connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
+    const other = otherParticipant(connection as Participants, uid);
+    await assertAccountActive(other, tx);
+    const rows = await tx.get(ref.collection('messages').where('sentAt', '>', Date.now() - MESSAGE_RETENTION_MS).orderBy('sentAt', 'desc').limit(data.latest ? 1 : 200));
+    return rows.docs.map((row) => {
+      const m = row.data();
+      return { messageId: row.id, connectionId, senderId: m.senderId, content: m.content, sentAt: m.sentAt, moderationFlag: m.moderationFlag, ...(typeof m.replyTo === 'string' ? { replyTo: m.replyTo } : {}) };
+    });
+  });
+  const servedAt = Date.now();
+  // Recheck after the query/transaction: a message can expire while awaiting IO.
+  return { servedAt, messages: messages.filter((m) => typeof m.sentAt === 'number' && Number.isFinite(m.sentAt) && m.sentAt > servedAt - MESSAGE_RETENTION_MS && m.sentAt <= servedAt).reverse() };
 });

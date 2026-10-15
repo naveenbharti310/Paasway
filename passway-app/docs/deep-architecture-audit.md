@@ -94,3 +94,11 @@ provenance first. Add a durable job/outbox/deletion state machine where the
 above reliability gaps require it. A new model provider, emulator vendor,
 microservice or queue does not by itself establish these invariants. No new
 paid service is introduced.
+
+## Follow-up implementation
+
+The stacked `fix/release-boundaries` branch implements a coordinated server-only
+message-read path and recoverable account deletion. See
+[release-boundary remediation and mandatory migration gates](release-boundaries.md).
+The open items above describe the earlier audit snapshot, not permission to
+skip live rollout, attestation, dependency or exact-source native verification.

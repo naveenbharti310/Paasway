@@ -25,6 +25,7 @@ export function runCallable<T>(handler: CallableHandler<T>, auth: CallerAuth | u
 // Every client action goes through this wrapper so that sign in, App Check and
 // payload shape are checked the same way before any handler logic runs.
 export function authedCallable<T>(handler: CallableHandler<T>) {
-  const fn = onCall({ enforceAppCheck }, async (request) => runCallable(handler, request.auth, request.data));
+  const production = !!process.env.K_SERVICE && process.env.FUNCTIONS_EMULATOR !== 'true';
+  const fn = onCall({ enforceAppCheck: production ? true : enforceAppCheck }, async (request) => runCallable(handler, request.auth, request.data));
   return Object.assign(fn, { handler });
 }
