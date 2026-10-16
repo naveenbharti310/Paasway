@@ -403,3 +403,28 @@ test('a failed deletion job rotates behind another pending account instead of st
     assert.equal((await collection('accountDeletions').doc('bob').get()).data().status, 'complete');
   } finally { firebase.auth = originalAuth; }
 });
+
+for (const [label, timestamp] of [['NaN', () => NaN], ['positive infinity', () => Infinity], ['future', () => Date.now() + 3600000]]) {
+  test(`real transactions reject replies to an unavailable ${label} target`, async () => {
+    await seedConnection();
+    const messages = collection('connections').doc('chat1').collection('messages');
+    await messages.doc('target').set({ senderId: 'bob', content: 'Unavailable target', sentAt: timestamp() });
+    await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Must not be committed', replyTo: 'target' }), { code: 'failed-precondition' });
+    assert.equal((await messages.get()).size, 1);
+    assert.equal((await collection('connections').doc('chat1').get()).data().lastActivityAt, undefined);
+  });
+}
+test('real latest-message query excludes future rows before applying its limit', async () => {
+  await seedConnection();const messages = collection('connections').doc('chat1').collection('messages'), now = Date.now();
+  await messages.doc('future').set({ senderId: 'bob', content: 'Future', sentAt: now + 3600000 });
+  await messages.doc('visible').set({ senderId: 'bob', content: 'Visible', sentAt: now - 1000 });
+  const result = await call(require('../lib/handlers/messages').getMessages, { connectionId: 'chat1', latest: true });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
+test('real bounded history is not starved by more than 200 future rows', async () => {
+  await seedConnection();const messages = collection('connections').doc('chat1').collection('messages'), batch = db.batch(), now = Date.now();
+  for (let index = 0; index < 201; index++) batch.set(messages.doc(`future-${index}`), { senderId: 'bob', content: 'Future', sentAt: now + 3600000 + index });
+  batch.set(messages.doc('visible'), { senderId: 'bob', content: 'Visible', sentAt: now - 1000 });await batch.commit();
+  const result = await call(require('../lib/handlers/messages').getMessages, { connectionId: 'chat1' });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});

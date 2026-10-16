@@ -497,3 +497,27 @@ test('a phone hold awaiting review is not incorrectly treated as a ban', async (
   db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: 'reviewed-phone' });
   await assert.doesNotReject(call(getMessages, { connectionId: 'chat1' }));
 });
+
+for (const [label, timestamp] of [['NaN', () => NaN], ['positive infinity', () => Infinity], ['future', () => Date.now() + 3600000]]) {
+  test(`a new reply rejects an unavailable ${label} target timestamp`, async () => {
+    connection();
+    db.seed('connections/chat1/messages/target', { senderId: 'bob', content: 'Unavailable target', sentAt: timestamp() });
+    await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Must not be committed', replyTo: 'target' }), { code: 'failed-precondition' });
+    assert.equal([...db.values.values()].filter(value => value.content === 'Must not be committed').length, 0);
+    assert.equal(db.read('connections/chat1').lastActivityAt, undefined);
+  });
+}
+test('future-dated rows cannot mask a valid latest-message preview', async () => {
+  connection();const now = Date.now();
+  db.seed('connections/chat1/messages/a-future', { senderId: 'bob', content: 'Future', sentAt: now + 3600000 });
+  db.seed('connections/chat1/messages/z-visible', { senderId: 'bob', content: 'Visible', sentAt: now - 1000 });
+  const result = await call(getMessages, { connectionId: 'chat1', latest: true });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
+test('future-dated rows cannot consume the bounded visible history page', async () => {
+  connection();const now = Date.now();
+  for (let index = 0; index < 201; index++) db.seed(`connections/chat1/messages/a-future-${String(index).padStart(3, '0')}`, { senderId: 'bob', content: 'Future', sentAt: now + 3600000 + index });
+  db.seed('connections/chat1/messages/z-visible', { senderId: 'bob', content: 'Visible', sentAt: now - 1000 });
+  const result = await call(getMessages, { connectionId: 'chat1' });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
