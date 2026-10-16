@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:rules": "node --test test/firestore.rules.test.cjs",
     "test:rules:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules\"",
-    "test:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules && npm run test:integration --prefix functions\"",
+    "test:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only auth,firestore --project demo-passway \"npm run test:rules && npm run test:integration --prefix functions && npm run test:auth:integration --prefix functions\"",
     "check": "npm run security:audit && npm run test:mobile && npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist",
     "preview:web": "sh scripts/web-preview.sh",
     "icons": "node scripts/make-icons.cjs",

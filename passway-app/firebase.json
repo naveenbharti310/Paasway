@@ -27,7 +27,11 @@
     "ui": {
       "enabled": false
     },
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "auth": {
+      "host": "127.0.0.1",
+      "port": 9099
+    }
   },
   "react-native": {
     "crashlytics_auto_collection_enabled": false,

@@ -10,7 +10,8 @@
     "deploy": "firebase deploy --only functions",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.api.json",
     "test": "npm run build && node --test test/*.test.cjs",
-    "test:integration": "npm run build && node --test test/emulator.integration.cjs"
+    "test:integration": "npm run build && node --test test/emulator.integration.cjs",
+    "test:auth:integration": "npm run build && node --test test/auth.integration.cjs"
   },
   "dependencies": {
     "@vercel/functions": "^3.9.11",

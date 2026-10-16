@@ -10,14 +10,14 @@ Confirmed changes in this phase:
 
 1. Align the source workflow to the existing installed-hash/exploit/upstream-conformance security gate. Preserve strict backend audit, pinned actions, read-only permissions and raw non-clean registry reports. Three YAML-parsed policy regressions failed before, then passed. The policy tests must also execute in central exact-source CI, with source `.github` included in the immutable archive.
 2. Add the mandatory message-read route to negative deployment-attestation checks. A mocked deployment rejecting old routes correctly but returning404 for `getMessages` previously passed the checker; a behavioral regression failed before and passed afterward. Fixtures remain malformed, unauthenticated and non-SMS; positive attestation remains unproven.
-3. Correct the source workflow comment: central checks are **dispatched**, not automatically cross-repository triggered. The source personal-account Actions startup block is not repaired by a YAML change.
+3. Correct the source workflow comment: central checks are **dispatched**, not automatically cross-repository triggered. The previously observed source Actions startup block is no longer observed in fresh actual execution.
 
 Gate: rerun clean exact-source hosted policy/unit/rules/integration/export/security/static checks together. Do not inherit native or signed-release acceptance from the baseline commit onto the new phase commit. No new production deployment or signed release in this phase.
 
 Residual blockers, explicitly not concealed by green mitigation tests:
 - Registry reports21 high propagated entries from node-forge/braces roots. Fresh official latest versions1.4.0/3.0.3 still have no upstream firstPatchedVersion. Reviewed installed remedies are verified, but **raw audit is NOT clean**.
 - Shared local installed dependencies drifted to upstream originals and are not accepted. Clean isolated hosted installs are authoritative.
-- Source-repository Actions cannot start under the current account restriction; its edited workflow remains **not executed there**. Shared commands and YAML policy can be tested centrally; that does not fix the account.
+- Source automatic PR checks have now executed successfully on the exact phase-one source; no account-startup blocker is currently observed.
 - Production Vercel alias has no gitCommit provenance and does not match the candidate API contract (`getMessages`404). Actual production readiness gate must remain failed until coordinated migration and real acceptance.
 - Gemini4 Argon High was selected and used for source audits; it reported no test execution. Its account quota was exhausted and the provider switched its picker to Flash-Lite. No further prompts may be silently sent to that fallback, and no paid upgrade/API is authorized. Continue independent verification; require actual Argon High selection for later provider requests.
 
@@ -35,3 +35,16 @@ Within each phase, fix independent confirmed defects together, preserve failing-
 Source run38923294297 and central38923156272 independently passed488 checks each; source dependency mitigation/conformance gates really executed successfully. The old source-account startup restriction is **no longer observed**, not an active blocker. Restore credential-free automatic PR/main checks now that actual execution works; keep the separate deployed-production gate failed.
 
 An offline Gitleaks8.30.1 scan flagged the public Firebase API identifier hardcoded in web-preview.sh. This was not classified as a proven private-key leak. Inspection found a real unsafe helper configuration: diagnostic App Check off against the live production API, automatic publishing and an unpinned CLI download. The helper now requires explicit public settings and a controlled preview/loopback API, rejects production and release profiles, uses the installed locked Expo CLI, and **builds only**. There is no automatic publication or credential rotation. Its actual shell rejection and configuration cases are tested, and clean source/central CI must exercise the actual controlled build helper. This additional hardening is independently implemented; no new Gemini request was sent after its usage limit.
+
+
+## Phase 1 clean evidence and Phase 2 entry
+
+Exact source d58e411b5355bede342c94b52b9075b9a3614b0b independently passed source run38925025247 and central38925364553: 4 workflow-policy +152 mobile +225 backend +35 rules +80 real-Firestore =496 assertions **per run**, both typechecks, all exports and actual controlled build-only preview. Static38925370757 has zero SARIF results; offline Gitleaks8.30.1 has zero matches. Installed hash/exploit/conformance proofs passed; raw audit still21 high; forge829 passed/4pending, braces899 passed. Evidence is not production or native acceptance.
+
+All confirmed Phase1 engineering defects are fixed and tested. Deployment mismatch, lack of positive Store attestation and unpatched upstream advisory risk remain explicit release blockers in Phase5, not falsely repaired or hidden by phase progression.
+
+Phase2 adds an exhaustive actual-HTTP production boundary matrix for every callable and OTP route: missing/invalid App Check must fail before Auth/body/provider/database work despite staging bypass settings; valid attestation must never override a revoked identity. This coverage passes locally (42 additional cases, backend267 total). It is coverage strengthening, **not 42 newly reproduced product bugs**.
+
+A separate real local Auth+Firestore integration gate exercises the actual OTP handler with only its SMS provider stubbed, custom-token exchange, verified phone-claim propagation into age-policy hashes, existing phone UID reuse, single-use challenges, and disabled account/token rejection. It requires exact demo-project localhost emulators and rejects credentials/production. It is not real SMS, production cryptographic attestation or a licensed Store run. Clean hosted execution is required before Phase2 signoff.
+
+Gemini quota was previously exhausted; subsequent browser inspection also found the account signed out. No prompt was sent to Flash-Lite. These independent regressions are not misrepresented as Argon-executed tests.
