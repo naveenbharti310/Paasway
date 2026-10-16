@@ -1,7 +1,7 @@
 import { connectionNow } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db } from '../../../firebase/client';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -15,6 +15,10 @@ type RequestRouteProp = RouteProp<RootStackParamList, 'Request'>;
 
 export default function RequestScreen() {
   const navigation = useNavigation<RootNavigationProp>();
+  const { width, fontScale } = useWindowDimensions();
+  // Preserve full-sized accessible labels rather than splitting consent words
+  // into narrow half-width pills at large font scales.
+  const stackActions = fontScale >= 1.4 || width < 320;
   const { params } = useRoute<RequestRouteProp>();
   const { requestId, requesterName, requestedAt, tidCreatedAt, expiresAt, clock } = params;
   const [error, setError] = useState<string | null>(null);
@@ -78,9 +82,9 @@ export default function RequestScreen() {
         {unavailable && <Text accessibilityRole="alert" style={styles.error}>This request is no longer available.</Text>}
         {!unavailable && expired && <Text style={styles.error}>This request has expired.</Text>}
         {(expired || unavailable) && <Button testID="request-start-again" label="Start again" onPress={() => navigation.replace('Generate')} />}
-        <View style={styles.row}>
-          <Button label="Decline" testID="decline" variant="secondary" onPress={() => handleRespond(false)} loading={loading === 'decline'} disabled={!!loading} style={styles.half} />
-          <Button label="Accept" testID="accept" onPress={() => handleRespond(true)} loading={loading === 'accept'} disabled={!!loading || expired || unavailable} style={styles.half} />
+        <View testID="request-actions" style={[styles.row, stackActions && styles.stacked]}>
+          <Button label="Decline" testID="decline" variant="secondary" onPress={() => handleRespond(false)} loading={loading === 'decline'} disabled={!!loading} style={stackActions ? styles.full : styles.half} />
+          <Button label="Accept" testID="accept" onPress={() => handleRespond(true)} loading={loading === 'accept'} disabled={!!loading || expired || unavailable} style={stackActions ? styles.full : styles.half} />
         </View>
       </ScrollView>
     </View>
@@ -100,4 +104,6 @@ const styles = StyleSheet.create({
   helper: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.gold, marginTop: 8, backgroundColor: colors.accentBg, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18 },
   row: { flexDirection: 'row', gap: 12, marginTop: 28, width: '100%' },
   half: { flex: 1, width: undefined },
+  stacked: { flexDirection: 'column' },
+  full: { flex: 0, width: '100%' },
 });

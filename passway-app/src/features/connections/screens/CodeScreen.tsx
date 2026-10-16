@@ -92,7 +92,7 @@ export default function CodeScreen() {
         <Text style={styles.helper}>Show this to the person you just met</Text>
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>ONE TIME CODE</Text>
-          <Text style={styles.codeText} testID="code-text" selectable={false} maxFontSizeMultiplier={1} accessibilityLabel={`Your code is ${tid.split('').join(' ')}`}>{tid}</Text>
+          <Text style={styles.codeText} testID="code-text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} selectable={false} maxFontSizeMultiplier={1} accessibilityLabel={`Your code is ${tid.split('').join(' ')}`}>{tid}</Text>
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${Math.max(0, Math.min(1, secondsLeft / Math.max(1, (expiresAt - createdAt) / 1000))) * 100}%` }, urgent && styles.fillUrgent]} />
           </View>
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   bottom: { paddingBottom: 16 },
   codeCard: { width: '100%', backgroundColor: colors.accentBg, borderRadius: 32, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: '#2A2418' },
   codeLabel: { fontFamily: 'Passway-SemiBold', fontSize: 14, color: colors.textMuted, marginBottom: 12, letterSpacing: 2 },
-  codeText: { fontFamily: 'Passway-Bold', fontSize: 52, letterSpacing: 10, color: colors.gold, paddingLeft: 10 },
+  codeText: { width: '100%', textAlign: 'center', fontFamily: 'Passway-Bold', fontSize: 52, letterSpacing: 10, color: colors.gold, paddingLeft: 10 },
   track: { width: '100%', height: 6, borderRadius: 3, backgroundColor: colors.border, marginTop: 24, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3, backgroundColor: colors.gold },
   fillUrgent: { backgroundColor: colors.danger },
