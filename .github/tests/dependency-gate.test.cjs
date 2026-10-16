@@ -45,4 +45,14 @@ test('source CI keeps strict backend audit, pinned actions, read-only permission
   assert.ok(runIndex(w.jobs.regression.steps, 'node --test ../.github/tests/dependency-gate.test.cjs') >= 0, 'The workflow policy tests must actually run in source CI');
 });
 
-test('working source CI automatically validates PRs and main without embedding runtime credentials',()=>{const w=workflow();assert.ok(w.on.pull_request);assert.deepEqual(w.on.push.branches,['main']);assert.ok(w.on.pull_request.paths.includes('passway-app/**'));assert.doesNotMatch(fs.readFileSync(workflowPath,'utf8'),/secrets\./);assert.ok(w.jobs.regression.steps.some(step=>step.run==='npm run preview:web'&&step.env.EXPO_PUBLIC_API_URL==='http://127.0.0.1:8787'));});
+test('working source CI automatically validates PRs and main without embedding runtime credentials',()=>{const w=workflow();assert.ok(w.on.pull_request);assert.deepEqual(w.on.push.branches,['main']);assert.equal(w.on.pull_request.paths, undefined);assert.equal(w.on.pull_request['paths-ignore'], undefined);assert.doesNotMatch(fs.readFileSync(workflowPath,'utf8'),/secrets\./);assert.ok(w.jobs.regression.steps.some(step=>step.run==='npm run preview:web'&&step.env.EXPO_PUBLIC_API_URL==='http://127.0.0.1:8787'));});
+
+
+test('required source checks cannot remain permanently pending because of path-filtered events', () => {
+ const events = workflow().on;
+ for (const event of ['pull_request', 'push']) {
+  assert.ok(events[event], `${event} trigger must exist`);
+  assert.equal(events[event].paths, undefined, `${event} paths can skip mandatory checks`);
+  assert.equal(events[event]['paths-ignore'], undefined, `${event} paths-ignore can skip mandatory checks`);
+ }
+});
