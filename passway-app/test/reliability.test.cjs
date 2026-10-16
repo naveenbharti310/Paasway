@@ -179,7 +179,14 @@ test('late permission approval after a deadline cannot start GPS work', async ()
 
 test("next store candidate has a new monotonic version and hardened attestation profile", () => {
  const c=buildConfig({EAS_BUILD_PROFILE:"play-attestation",EXPO_PUBLIC_APP_CHECK:"on",EXPO_PUBLIC_OTP_PROVIDER:"2factor"}).default;
- assert.equal(c.version,"0.3.3");assert.equal(c.android.versionCode,9);assert.equal(c.android.allowBackup,false);
+ // Published internal baseline is 0.3.3 / 9. Future candidates must be
+ // newer, not permanently equal to a single version frozen into a test.
+ assert.match(c.version,/^\d+\.\d+\.\d+$/);
+ const version=c.version.split('.').map(Number), published=[0,3,3];
+ const firstChanged=version.findIndex((n,i)=>n!==published[i]);
+ assert.ok(firstChanged>=0 && version[firstChanged]>published[firstChanged], 'Candidate semantic version must exceed published 0.3.3');
+ assert.ok(Number.isSafeInteger(c.android.versionCode) && c.android.versionCode>9, 'Candidate code must exceed published internal version 9');
+ assert.equal(c.android.allowBackup,false);
 });
 
 test('onboarding distinguishes chat availability from eventual deletion and safety retention',()=>{
