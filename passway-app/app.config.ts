@@ -48,7 +48,7 @@ const config: ExpoConfig = {
   name: 'Passway',
   slug: 'passway',
   ...(easOwner ? { owner: easOwner } : {}),
-  version: '0.3.3',
+  version: '0.3.4',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   backgroundColor: '#0B0D11',
@@ -62,7 +62,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.passway.app',
-    versionCode: 9,
+    versionCode: 10,
     allowBackup: false,
     blockedPermissions: [
       'android.permission.SYSTEM_ALERT_WINDOW',

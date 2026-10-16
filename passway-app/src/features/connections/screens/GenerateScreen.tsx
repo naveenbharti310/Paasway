@@ -1,6 +1,6 @@
 import { errorMessage } from '../../../services/errors';
 import type { RootNavigationProp } from '../../../navigation/types';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { auth } from '../../../firebase/client';
@@ -22,6 +22,9 @@ export default function GenerateScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  // State updates render later; a synchronous lock also covers same-frame presses
+  // and keyboard-submit/button overlap before the disabled state is committed.
+  const generationInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const uid = auth.currentUser?.uid ?? '';
 
@@ -33,11 +36,12 @@ export default function GenerateScreen() {
   }, [uid]);
 
   async function handleGenerate() {
-    if (loading) return;
+    if (generationInFlight.current) return;
     if (!name.trim()) {
       setError('Enter a name to show the other person');
       return;
     }
+    generationInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -48,6 +52,7 @@ export default function GenerateScreen() {
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not generate a code. Try again.'));
     } finally {
+      generationInFlight.current = false;
       setLoading(false);
     }
   }
