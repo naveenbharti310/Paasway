@@ -15,4 +15,15 @@ jobs:
         with:
           node-version: '22'
       - name: Verify malformed requests are rejected by App Check before business logic
-        run: node passway-app/scripts/check-deployed-app-check.cjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node passway-app/scripts/check-deployed-app-check.cjs | tee production-api-boundaries.json
+      - name: Preserve the live outcome even when the contract fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: production-api-boundaries
+          path: production-api-boundaries.json
+          retention-days: 7
+          if-no-files-found: error
