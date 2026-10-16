@@ -1,3 +1,4 @@
+import { connectionNow, type ConnectionClock } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import type { RootNavigationProp } from '../../../navigation/types';
 import { useEffect, useRef, useState } from 'react';
@@ -22,6 +23,7 @@ export default function EnterCodeScreen() {
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [requestExpiresAt, setRequestExpiresAt] = useState<number | null>(null);
+  const [requestClock, setRequestClock] = useState<ConnectionClock | undefined>();
   const inputs = useRef<Array<TextInput | null>>([]);
   const uid = auth.currentUser?.uid ?? '';
 
@@ -76,6 +78,7 @@ export default function EnterCodeScreen() {
       const { lat, lng } = await getCurrentLocation();
       const result = await redeemTid({ tid: code, lat, lng, displayName: name.trim() });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
+      setRequestClock(result.clock);
       setRequestExpiresAt(result.expiresAt);
       setRequestId(result.requestId);
     } catch (err: unknown) {
@@ -116,7 +119,7 @@ export default function EnterCodeScreen() {
   useEffect(() => {
     if (!requestId || !requestExpiresAt) return;
     const checkExpiry = () => {
-      if (Date.now() >= requestExpiresAt) {
+      if (connectionNow(requestClock) >= requestExpiresAt) {
         setRequestId(null);
         setError('The request expired. Ask them to generate a new code.');
       }
@@ -124,7 +127,7 @@ export default function EnterCodeScreen() {
     checkExpiry();
     const timer = setInterval(checkExpiry, 1000);
     return () => clearInterval(timer);
-  }, [requestId, requestExpiresAt]);
+  }, [requestId, requestExpiresAt, requestClock]);
 
   if (requestId) {
     return (

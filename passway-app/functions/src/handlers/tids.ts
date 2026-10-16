@@ -59,10 +59,10 @@ export const redeemTid = authedCallable(async (uid, data) => {
     const now = Date.now();
     tx.update(tidRef, { status: 'pending', requestId: requestRef.id });
     tx.create(requestRef, { requestId: requestRef.id, tid, tidCreatedAt: code.createdAt, expiresAt: code.expiresAt, requesterId: uid, requesterName: displayName, generatorId: code.generatorId, generatorName: code.generatorName, status: 'pending', createdAt: now, deleteAt: new Date(now + MESSAGE_RETENTION_MS) });
-    return { generatorId: code.generatorId as string, expiresAt: code.expiresAt as number };
+    return { generatorId: code.generatorId as string, expiresAt: code.expiresAt as number, servedAt: now };
   });
   await notifyUser(result.generatorId, 'Passway', 'Someone nearby wants to connect', { type: 'request', requestId: requestRef.id });
-  return { requestId: requestRef.id, expiresAt: result.expiresAt };
+  return { requestId: requestRef.id, expiresAt: result.expiresAt, servedAt: result.servedAt };
 });
 
 export const deactivateTid = authedCallable(async (uid, data) => {

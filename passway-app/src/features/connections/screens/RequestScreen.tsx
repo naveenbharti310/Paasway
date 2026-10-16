@@ -1,3 +1,4 @@
+import { connectionNow } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -13,13 +14,13 @@ type RequestRouteProp = RouteProp<RootStackParamList, 'Request'>;
 export default function RequestScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<RequestRouteProp>();
-  const { requestId, requesterName, requestedAt, tidCreatedAt, expiresAt } = params;
+  const { requestId, requesterName, requestedAt, tidCreatedAt, expiresAt, clock } = params;
   const [error, setError] = useState<string | null>(null);
-  const [expired, setExpired] = useState(Date.now() >= expiresAt);
+  const [expired, setExpired] = useState(connectionNow(clock) >= expiresAt);
   useEffect(() => {
-    const timer = setInterval(() => setExpired(Date.now() >= expiresAt), 1000);
+    const timer = setInterval(() => setExpired(connectionNow(clock) >= expiresAt), 1000);
     return () => clearInterval(timer);
-  }, [expiresAt]);
+  }, [expiresAt, clock]);
   const [loading, setLoading] = useState<'accept' | 'decline' | null>(null);
 
   const elapsedSeconds = Math.max(0, Math.round((requestedAt - tidCreatedAt) / 1000));

@@ -7,7 +7,7 @@ export interface GenerateTidRequest extends Coordinates { displayName: string }
 export interface GenerateTidResponse { tid: string; createdAt: number; expiresAt: number }
 
 export interface RedeemTidRequest extends Coordinates { tid: string; displayName: string }
-export interface RedeemTidResponse { requestId: string; expiresAt: number }
+export interface RedeemTidResponse { requestId: string; expiresAt: number; servedAt?: number }
 
 export interface RespondRequest { requestId: string; accept: boolean }
 export interface RespondResponse { connectionId?: string }

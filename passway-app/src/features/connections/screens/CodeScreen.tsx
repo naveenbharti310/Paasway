@@ -1,3 +1,4 @@
+import { remainingSeconds } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -15,14 +16,14 @@ type CodeRouteProp = RouteProp<RootStackParamList, 'Code'>;
 export default function CodeScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<CodeRouteProp>();
-  const { tid, createdAt, expiresAt } = params;
-  const [secondsLeft, setSecondsLeft] = useState(Math.max(0, Math.round((expiresAt - Date.now()) / 1000)));
+  const { tid, createdAt, expiresAt, clock } = params;
+  const [secondsLeft, setSecondsLeft] = useState(remainingSeconds(expiresAt, clock));
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      const left = remainingSeconds(expiresAt, clock);
       setSecondsLeft(left);
       if (left === 0) {
         clearInterval(interval);
@@ -30,7 +31,7 @@ export default function CodeScreen() {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [expiresAt, navigation]);
+  }, [expiresAt, clock, navigation]);
 
   useEffect(() => {
     const q = query(
@@ -51,11 +52,12 @@ export default function CodeScreen() {
           requestedAt: data.createdAt,
           tidCreatedAt: data.tidCreatedAt,
           expiresAt: data.expiresAt,
+          clock,
         });
       }
     }, (err) => setError(errorMessage(err, 'Could not listen for a connection request.')));
     return unsubscribe;
-  }, [tid, createdAt, navigation]);
+  }, [tid, createdAt, clock, navigation]);
 
   // Going back with the system back button or gesture cancels the code, so it
   // is never left active where nobody is watching for a request.

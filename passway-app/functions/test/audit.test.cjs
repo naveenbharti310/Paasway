@@ -546,3 +546,23 @@ for (const [label, invalidExpiry] of [
     assert.equal([...db.values.keys()].filter(p => p.startsWith('connections/')).length, 0);
   });
 }
+
+test('redeem response supplies server time for skew-independent requester expiry', async () => {
+  code();
+  const before = Date.now();
+  const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
+  assert.ok(Number.isFinite(result.servedAt));
+  assert.ok(result.servedAt >= before && result.servedAt <= Date.now());
+  assert.equal(result.expiresAt, db.read('tids/AB12').expiresAt);
+});
+
+test('redeem server anchor uses transaction time rather than restamping after notification work', async () => {
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => ++now;
+  try {
+    code();
+    const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
+    assert.equal(result.servedAt, db.read(`connectionRequests/${result.requestId}`).createdAt);
+  } finally { Date.now = originalNow; }
+});

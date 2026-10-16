@@ -42,9 +42,9 @@ export default function GenerateScreen() {
     setError(null);
     try {
       const { lat, lng } = await getCurrentLocation();
-      const { tid, createdAt, expiresAt } = await generateTid({ lat, lng, displayName: name.trim() });
+      const { tid, createdAt, expiresAt, clock } = await generateTid({ lat, lng, displayName: name.trim() });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
-      navigation.navigate('Code', { tid, createdAt, expiresAt });
+      navigation.navigate('Code', { tid, createdAt, expiresAt, clock });
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not generate a code. Try again.'));
     } finally {
