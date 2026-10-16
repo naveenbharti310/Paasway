@@ -523,3 +523,50 @@ test('real transactions: old intent cannot claim a recycled code incarnation',as
   assert.notEqual(first.requestId,next.requestId);
   assert.equal((await collection('connectionRequests').get()).size,2);
 });
+
+test('real maintenance lease releases failures for immediate retry', { timeout: 60000 }, async () => {
+  const { withMaintenanceLease } = require('../lib/services/maintenanceLease');
+  const now = Date.now();
+  await assert.rejects(withMaintenanceLease(async () => { throw Error('injected outage'); }, { now: () => now }), /injected outage/);
+  const failed = (await collection('system').doc('maintenance').get()).data();
+  assert.equal(failed.lastRunAt, undefined);
+  assert.equal(failed.leaseOwner, undefined);
+  assert.equal((await withMaintenanceLease(async () => 'retried', { now: () => now + 1 })).result, 'retried');
+});
+test('real maintenance transactions serialize simultaneous forced claimants', { timeout: 60000 }, async () => {
+  const { withMaintenanceLease } = require('../lib/services/maintenanceLease');
+  let release;
+  const first = withMaintenanceLease(() => new Promise(resolve => { release = resolve; }));
+  while (!release) await new Promise(resolve => setTimeout(resolve, 5));
+  const contenders = await Promise.all(Array.from({ length: 6 }, () => withMaintenanceLease(async () => assert.fail('lease was bypassed'), { force: true })));
+  assert.equal(contenders.filter(result => result.ran).length, 0);
+  release(1);
+  await first;
+});
+for (const fails of [false, true]) test(`real expired maintenance ${fails ? 'failure' : 'completion'} preserves replacement ownership`, { timeout: 60000 }, async () => {
+  const { withMaintenanceLease, MAINTENANCE_LEASE_MS } = require('../lib/services/maintenanceLease');
+  let clock = Date.now(), release;
+  const first = withMaintenanceLease(() => new Promise((resolve, reject) => { release = () => fails ? reject(Error('old worker failed')) : resolve(1); }), { now: () => clock });
+  while (!release) await new Promise(resolve => setTimeout(resolve, 5));
+  clock += MAINTENANCE_LEASE_MS;
+  let releaseReplacement;
+  const replacement = withMaintenanceLease(() => new Promise(resolve => { releaseReplacement = resolve; }), { now: () => clock });
+  while (!releaseReplacement) await new Promise(resolve => setTimeout(resolve, 5));
+  const claim = (await collection('system').doc('maintenance').get()).data();
+  release();
+  if (fails) await assert.rejects(first, /old worker failed/); else await first;
+  assert.deepEqual((await collection('system').doc('maintenance').get()).data(), claim);
+  releaseReplacement(2);
+  await replacement;
+  assert.equal((await collection('system').doc('maintenance').get()).data().lastRunAt, clock);
+});
+test('real legacy maintenance success timestamp and expired completion remain safe', { timeout: 60000 }, async () => {
+  const { withMaintenanceLease, MAINTENANCE_LEASE_MS } = require('../lib/services/maintenanceLease');
+  let clock = Date.now();
+  const ref = collection('system').doc('maintenance');
+  await ref.set({ lastRunAt: clock });
+  assert.equal((await withMaintenanceLease(async () => assert.fail(), { now: () => clock })).ran, false);
+  await withMaintenanceLease(async () => { clock += MAINTENANCE_LEASE_MS; }, { now: () => clock, force: true });
+  assert.ok((await ref.get()).data().lastRunAt < clock);
+  assert.equal((await ref.get()).data().leaseOwner, undefined);
+});

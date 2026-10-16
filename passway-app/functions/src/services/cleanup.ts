@@ -3,7 +3,8 @@ import { db } from '../lib/firebase';
 import { log } from '../lib/logger';
 import { resumePendingAccountDeletions } from './accountDeletion';
 import { closeIdleConnections } from './connections';
-import { CLEANUP_BATCH, CLEANUP_INTERVAL_MS } from '../constants';
+import { CLEANUP_BATCH } from '../constants';
+import { withMaintenanceLease } from './maintenanceLease';
 
 const EXPIRING = ['tids', 'connectionRequests', 'connections', 'reports', 'rateLimits', 'accountHolds', 'accountDeletions'];
 
@@ -74,16 +75,15 @@ export async function runMaintenance(now = Date.now()): Promise<{ closed: number
   return { closed, deleted };
 }
 
-// Runs maintenance at most once per interval. The claim is taken in a
-// transaction so parallel requests do not all start a sweep.
-export async function maybeRunMaintenance(now = Date.now()): Promise<boolean> {
-  const ref = db.collection('system').doc('maintenance');
-  const claimed = await db.runTransaction(async (tx) => {
-    const last = (await tx.get(ref)).data()?.lastRunAt;
-    if (typeof last === 'number' && now - last < CLEANUP_INTERVAL_MS) return false;
-    tx.set(ref, { lastRunAt: now });
-    return true;
+// Monotonic elapsed time preserves deterministic cutoff injection in tests.
+export async function runCoordinatedMaintenance(now = Date.now(), force = false) {
+  const started = performance.now();
+  return withMaintenanceLease(() => runMaintenance(now), {
+    now: () => now + performance.now() - started,
+    force,
   });
-  if (claimed) await runMaintenance(now);
-  return claimed;
+}
+
+export async function maybeRunMaintenance(now = Date.now()): Promise<boolean> {
+  return (await runCoordinatedMaintenance(now)).ran;
 }

@@ -6,7 +6,7 @@ import { assertAccountActive, assertSameTestCohort } from '../lib/accounts';
 import { assertNotBlocked } from '../lib/blocks';
 import { documentId, isUnexpiredMillis } from '../lib/validation';
 import { connectionRef, endConnectionAs } from '../services/connections';
-import { runMaintenance } from '../services/cleanup';
+import { runCoordinatedMaintenance } from '../services/cleanup';
 
 export const respondToRequest = authedCallable(async (uid, data) => {
   const requestId = documentId(data.requestId, 'Request');
@@ -65,5 +65,5 @@ export const endConnection = authedCallable(async (uid, data) => {
 });
 
 export const closeIdleConnectionsJob = onSchedule({ schedule: 'every 60 minutes', retryCount: 1 }, async () => {
-  await runMaintenance();
+  await runCoordinatedMaintenance(Date.now(), true);
 });
