@@ -15,7 +15,7 @@ const PAGES = [
   { icon: 'link' as const, title: 'Meet someone, keep your number', body: 'Start a private chat with someone you just met, without giving them your phone number or social profiles.' },
   { icon: 'timer' as const, title: 'A code that lasts five minutes', body: 'One of you shows a short code. The other enters it while you are together. Each code works once.' },
   { icon: 'shield' as const, title: 'You choose who gets in', body: 'You see their name first and choose to accept or decline. End, block or report a chat at any time.' },
-  { icon: 'hourglass' as const, title: 'Nothing stays forever', body: 'Messages are deleted 72 hours after they are sent. Passway never shows anyone your number or your exact location.' },
+  { icon: 'hourglass' as const, title: 'Messages have a time limit', body: 'Messages are available in chats for up to 72 hours. Deletion runs afterward. Reported content may be retained longer for safety. Your number and exact location are not shown.' },
 ];
 
 export default function WelcomeScreen() {

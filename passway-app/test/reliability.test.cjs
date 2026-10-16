@@ -179,5 +179,18 @@ test('late permission approval after a deadline cannot start GPS work', async ()
 
 test("next store candidate has a new monotonic version and hardened attestation profile", () => {
  const c=buildConfig({EAS_BUILD_PROFILE:"play-attestation",EXPO_PUBLIC_APP_CHECK:"on",EXPO_PUBLIC_OTP_PROVIDER:"2factor"}).default;
- assert.equal(c.version,"0.3.2");assert.equal(c.android.versionCode,8);assert.equal(c.android.allowBackup,false);
+ assert.equal(c.version,"0.3.3");assert.equal(c.android.versionCode,9);assert.equal(c.android.allowBackup,false);
+});
+
+test('onboarding distinguishes chat availability from eventual deletion and safety retention',()=>{
+ const copy=fs.readFileSync(path.join(__dirname,'../src/features/onboarding/screens/WelcomeScreen.tsx'),'utf8');
+ assert.ok(/available in chats for up to 72 hours/.test(copy),'Disclose the maximum chat availability window');
+ assert.ok(/Deletion runs afterward/.test(copy),'Distinguish physical deletion from chat expiry');
+ assert.ok(/Reported content may be retained longer for safety/.test(copy),'Disclose the safety retention exception');
+ assert.ok(!/Messages are deleted 72 hours|Nothing stays forever/.test(copy),'Do not promise an unsupported exact deletion time');
+});
+test('empty-chat disclosure describes availability rather than promising exact deletion',()=>{
+ const copy=fs.readFileSync(path.join(__dirname,'../src/features/chat/screens/ChatScreen.tsx'),'utf8');
+ assert.ok(/Messages are available here for up to 72 hours/.test(copy),'Describe chat availability accurately');
+ assert.ok(!/Messages are deleted 72 hours/.test(copy),'Do not promise exact physical deletion');
 });

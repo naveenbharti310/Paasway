@@ -281,7 +281,7 @@ export default function ChatScreen() {
           <View style={styles.emptyWrap}>
             <Avatar name={otherName} seed={connectionId} size={72} />
             <Text style={styles.emptyName}>{otherName}</Text>
-            <Text style={styles.empty}>{'Say hello. Messages disappear 72 hours after they are sent.'}</Text>
+            <Text style={styles.empty}>{'Say hello. Messages are available here for up to 72 hours.'}</Text>
             <Text style={styles.emptyTip}>Tap the name at the top to add a private note only you can see.</Text>
           </View>
         )}
