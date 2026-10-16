@@ -95,15 +95,22 @@ export default function ChatScreen() {
   const currentUserId = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), (snap) => {
+    let active = true;
+    navigatedAway.current = false;
+    setConnection(null);
+    const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
       const data = (snap.data() as Connection) ?? null;
+      // A just-accepted connection may not exist in this device's local cache.
+      // Only an authoritative missing result can mean it has been removed.
+      if (!data && snap.metadata.fromCache) { setConnection(null); return; }
       setConnection(data);
       if ((!data || data.status === 'ended') && !navigatedAway.current) {
         navigatedAway.current = true;
         navigation.replace('Ended', { outcome: outcomeFor(data, currentUserId) });
       }
-    }, (err) => setError(errorMessage(err, 'Could not load this connection.')));
-    return unsubscribe;
+    }, (err) => { if (active) setError(errorMessage(err, 'Could not load this connection.')); });
+    return () => { active = false; unsubscribe(); };
   }, [connectionId, navigation, currentUserId]);
 
   useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); }, [messageLoadError]);

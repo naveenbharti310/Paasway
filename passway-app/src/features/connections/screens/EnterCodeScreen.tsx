@@ -87,24 +87,30 @@ export default function EnterCodeScreen() {
 
   useEffect(() => {
     if (!requestId) return;
-    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), (snap) => {
+    let active = true;
+    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
       const data = snap.data();
+      // Cache absence is not a server rejection of this newly created request.
+      if (!data && snap.metadata.fromCache) return;
       if (!data) {
         setError('This request is no longer available.');
         setRequestId(null);
         return;
       }
       if (data.status === 'accepted' && typeof data.connectionId === 'string') {
+        active = false; // Metadata-only replays cannot navigate a second time.
         navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: data.connectionId } }] });
       } else if (data.status === 'declined' || data.status === 'expired') {
         setError('That code is no longer available.');
         setRequestId(null);
       }
     }, (err) => {
+      if (!active) return;
       setError(errorMessage(err, 'Could not check the request.'));
       setRequestId(null);
     });
-    return unsubscribe;
+    return () => { active = false; unsubscribe(); };
   }, [requestId, navigation]);
 
   useEffect(() => {
