@@ -458,3 +458,29 @@ for (const [label, invalidExpiry] of [
     assert.equal((await collection('connections').get()).size, 0);
   });
 }
+
+for (const deletingUid of ['alice', 'bob']) {
+ test(`real deletion resolves a pending pairing when ${deletingUid} leaves before acceptance`, async () => {
+  await seedCode();
+  const pending = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+  const firebase = require('../lib/lib/firebase'), oldAuth = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  try { assert.deepEqual(await call(require('../lib/handlers/accounts').deleteAccount, {}, deletingUid), { pending: false }); }
+  finally { firebase.auth = oldAuth; }
+  assert.equal((await collection('connectionRequests').doc(pending.requestId).get()).data().status, 'declined');
+  assert.equal((await collection('tids').doc('AB12').get()).data().status, 'expired');
+  await assert.rejects(call(respondToRequest, { requestId: pending.requestId, accept: true }));
+  assert.equal((await collection('connections').get()).size, 0);
+ });
+}
+test('real accept/delete race leaves no live connection or unresolved pending request', { timeout: 60000 }, async () => {
+ await seedCode(); const pending = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+ const firebase = require('../lib/lib/firebase'), oldAuth = firebase.auth; firebase.auth = { deleteUser: async () => {} };
+ try {
+  const outcomes = await Promise.allSettled([call(respondToRequest, { requestId: pending.requestId, accept: true }), call(require('../lib/handlers/accounts').deleteAccount, {}, 'bob')]);
+  assert.equal(outcomes[1].status, 'fulfilled'); assert.deepEqual(outcomes[1].value, { pending: false });
+ } finally { firebase.auth = oldAuth; }
+ assert.notEqual((await collection('connectionRequests').doc(pending.requestId).get()).data().status, 'pending');
+ assert.equal((await collection('connections').where('status', '==', 'active').get()).size, 0);
+ assert.equal((await collection('accountDeletions').doc('bob').get()).data().status, 'complete');
+});
