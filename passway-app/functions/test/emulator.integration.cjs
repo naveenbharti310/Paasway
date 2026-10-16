@@ -428,3 +428,33 @@ test('real bounded history is not starved by more than 200 future rows', async (
   const result = await call(require('../lib/handlers/messages').getMessages, { connectionId: 'chat1' });
   assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
 });
+
+for (const [label, invalidExpiry] of [
+  ['NaN', NaN], ['infinite', Infinity], ['missing', undefined],
+  ['numeric string', String(Date.now() + 86400000)], ['object', {}],
+]) {
+  async function malformedExpiry(ref) {
+    const value = invalidExpiry === undefined ? require('firebase-admin/firestore').FieldValue.delete() : invalidExpiry;
+    await ref.update({ expiresAt: value });
+  }
+  test(`real malformed ${label} code expiry cannot be redeemed`, async () => {
+    await seedCode(); await malformedExpiry(collection('tids').doc('AB12'));
+    await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob'), { code: 'not-found' });
+    assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+    assert.equal((await collection('connectionRequests').get()).size, 0);
+  });
+  test(`real malformed ${label} request expiry cannot create a connection`, async () => {
+    await seedCode(); const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+    await malformedExpiry(collection('connectionRequests').doc(result.requestId));
+    await assert.rejects(call(respondToRequest, { requestId: result.requestId, accept: true }), { code: 'failed-precondition' });
+    assert.equal((await collection('connectionRequests').doc(result.requestId).get()).data().status, 'pending');
+    assert.equal((await collection('connections').get()).size, 0);
+  });
+  test(`real malformed ${label} claimed code expiry cannot create a connection`, async () => {
+    await seedCode(); const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+    await malformedExpiry(collection('tids').doc('AB12'));
+    await assert.rejects(call(respondToRequest, { requestId: result.requestId, accept: true }), { code: 'failed-precondition' });
+    assert.equal((await collection('tids').doc('AB12').get()).data().status, 'pending');
+    assert.equal((await collection('connections').get()).size, 0);
+  });
+}

@@ -5,7 +5,7 @@ import { assertAccountActive, assertSameTestCohort } from '../lib/accounts';
 import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { randomTid } from '../lib/tid';
-import { coordinates, text, tidCode } from '../lib/validation';
+import { coordinates, text, tidCode, isUnexpiredMillis } from '../lib/validation';
 import { encodeGeohash, cellAndNeighbors } from '../geo';
 import { notifyUser } from '../push';
 import { TID_TTL_MS, MESSAGE_RETENTION_MS, MAX_TID_GENERATIONS_PER_HOUR, MAX_REDEMPTION_ATTEMPTS_PER_HOUR, MAX_NAME_LENGTH } from '../constants';
@@ -48,7 +48,7 @@ export const redeemTid = authedCallable(async (uid, data) => {
     const requester = await assertAccountActive(uid, tx);
     const snap = await tx.get(tidRef);
     const code = snap.data();
-    if (!snap.exists || code?.status !== 'active' || code.expiresAt <= Date.now()) throw new HttpsError('not-found', INACTIVE_CODE);
+    if (!snap.exists || code?.status !== 'active' || !isUnexpiredMillis(code.expiresAt, Date.now())) throw new HttpsError('not-found', INACTIVE_CODE);
     if (code.generatorId === uid) throw new HttpsError('invalid-argument', 'You cannot use your own code.');
     const generator = await assertAccountActive(code.generatorId, tx);
     assertSameTestCohort(requester, generator);

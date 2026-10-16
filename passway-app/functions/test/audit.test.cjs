@@ -521,3 +521,28 @@ test('future-dated rows cannot consume the bounded visible history page', async 
   const result = await call(getMessages, { connectionId: 'chat1' });
   assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
 });
+
+// Server-owned persisted expiries must not be coerced or treated as unbounded.
+for (const [label, invalidExpiry] of [
+  ['NaN', NaN], ['infinite', Infinity], ['missing', undefined],
+  ['numeric string', String(Date.now() + 86400000)], ['object', {}],
+]) {
+  test(`malformed ${label} code expiry cannot be redeemed`, async () => {
+    code('active', { expiresAt: invalidExpiry });
+    await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other), { code: 'not-found' });
+    assert.equal(db.read('tids/AB12').status, 'active');
+    assert.equal([...db.values.keys()].filter(p => p.startsWith('connectionRequests/')).length, 0);
+  });
+  test(`malformed ${label} request expiry cannot create a connection`, async () => {
+    pending({ expiresAt: invalidExpiry });
+    await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'failed-precondition' });
+    assert.equal(db.read('connectionRequests/req1').status, 'pending');
+    assert.equal([...db.values.keys()].filter(p => p.startsWith('connections/')).length, 0);
+  });
+  test(`malformed ${label} claimed code expiry cannot create a connection`, async () => {
+    pending(); db.seed('tids/AB12', { ...db.read('tids/AB12'), expiresAt: invalidExpiry });
+    await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'failed-precondition' });
+    assert.equal(db.read('tids/AB12').status, 'pending');
+    assert.equal([...db.values.keys()].filter(p => p.startsWith('connections/')).length, 0);
+  });
+}

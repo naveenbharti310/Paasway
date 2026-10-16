@@ -1,5 +1,12 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 
+// Persisted millisecond expiries must fail closed, without JS coercion.
+// NaN, Infinity, missing fields, strings and Timestamp/map values are not
+// valid substitutes for the finite numeric expiries written by the server.
+export function isUnexpiredMillis(value: unknown, now: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > now;
+}
+
 export function payload(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new HttpsError('invalid-argument', 'Request data is required.');
