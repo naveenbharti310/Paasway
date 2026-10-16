@@ -1,42 +1,10 @@
 import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TextInputProps } from 'react-native';
-import { colors, radius } from '../theme/colors';
-
-interface Props extends TextInputProps {
-  label: string;
-}
-
+import { View, Text, TextInput, StyleSheet, type TextInputProps } from 'react-native';
+import { colors, radius, fonts } from '../theme/colors';
+interface Props extends TextInputProps { label: string }
 export default function LabeledField({ label, style, onFocus, onBlur, ...rest }: Props) {
   const [focused, setFocused] = useState(false);
-  return (
-    <View style={styles.wrap}>
-      <Text style={styles.label} maxFontSizeMultiplier={1.3} importantForAccessibility="no" accessibilityElementsHidden>{label.toUpperCase()}</Text>
-      <TextInput
-        style={[styles.field, focused && styles.focused, style]}
-        placeholderTextColor={colors.textMuted}
-        selectionColor={colors.gold}
-        accessibilityLabel={label}
-        maxFontSizeMultiplier={1.4}
-        onFocus={(e) => { setFocused(true); onFocus?.(e); }}
-        onBlur={(e) => { setFocused(false); onBlur?.(e); }}
-        {...rest}
-      />
-    </View>
-  );
+  const friendly = label.charAt(0).toUpperCase() + label.slice(1);
+  return <View style={styles.wrap}><Text style={styles.label} importantForAccessibility="no" accessibilityElementsHidden>{friendly}</Text><TextInput style={[styles.field, focused && styles.focused, style]} placeholderTextColor={colors.textMuted} selectionColor={colors.gold} accessibilityLabel={label} onFocus={e => { setFocused(true); onFocus?.(e); }} onBlur={e => { setFocused(false); onBlur?.(e); }} {...rest} /></View>;
 }
-
-const styles = StyleSheet.create({
-  wrap: { width: '100%' },
-  label: { fontSize: 12, color: colors.textSecondary, marginBottom: 8, letterSpacing: 1.2, fontWeight: '600' },
-  field: {
-    borderWidth: 1,
-    borderColor: colors.fieldBorder,
-    borderRadius: radius.md,
-    paddingHorizontal: 16,
-    minHeight: 52,
-    fontSize: 16,
-    color: colors.textPrimary,
-    backgroundColor: colors.surface,
-  },
-  focused: { borderColor: colors.gold },
-});
+const styles = StyleSheet.create({ wrap: { width: '100%' }, label: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginBottom: 10 }, field: { borderWidth: 1.5, borderColor: colors.fieldBorder, borderRadius: radius.md, paddingHorizontal: 18, paddingVertical: 16, minHeight: 60, fontFamily: fonts.medium, fontSize: 17, color: colors.textPrimary, backgroundColor: colors.surface }, focused: { borderColor: colors.gold, backgroundColor: '#1E211F' } });

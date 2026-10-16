@@ -16,7 +16,7 @@ export default function ScreenHeader({ title, showBack, right, large }: Props) {
     <View style={styles.wrap}>
       <View style={styles.header}>
         <View style={styles.left}>
-          {showBack && (
+          {showBack && navigation.canGoBack() && (
             <TouchableOpacity style={styles.backCircle} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Go back" hitSlop={8}>
               <Icon name="back" size={22} color={colors.textPrimary} />
             </TouchableOpacity>
@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   left: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   backCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  backGlyph: { fontSize: 24, color: colors.textPrimary, lineHeight: 26, marginTop: -2 },
-  title: { fontSize: 17, color: colors.textPrimary, fontWeight: '600' },
-  largeTitle: { fontSize: 32, fontWeight: '700', color: colors.textPrimary, letterSpacing: -0.5, marginTop: 12 },
+  backGlyph: { fontFamily: 'Passway-Regular', fontSize: 24, color: colors.textPrimary, lineHeight: 26, marginTop: -2 },
+  title: { fontFamily: 'Passway-SemiBold', fontSize: 17, color: colors.textPrimary },
+  largeTitle: { fontFamily: 'Passway-Bold', fontSize: 34, color: colors.textPrimary, letterSpacing: -0.5, marginTop: 20 },
 });

@@ -8,11 +8,12 @@ import { onAuthStateChanged, signOut, type User } from '@react-native-firebase/a
 import { auth } from '../firebase/client';
 import { findActiveConnection } from '../features/connections/api/activeConnection';
 import { ensureUserDoc, type AccountStage } from '../features/auth/api/ensureUser';
+import DeletionRecoveryScreen from '../features/account/DeletionRecoveryScreen';
 import WelcomeScreen from '../features/onboarding/screens/WelcomeScreen';
 import AgeCheckScreen from '../features/onboarding/screens/AgeCheckScreen';
 import UnderAgeScreen from '../features/onboarding/screens/UnderAgeScreen';
 import SettingsScreen from '../features/settings/screens/SettingsScreen';
-import { registerForPush } from '../services/notifications';
+import { registerForPush, refreshPushToken } from '../services/notifications';
 import PhoneAuthScreen from '../features/auth/screens/PhoneAuthScreen';
 import GenerateScreen from '../features/connections/screens/GenerateScreen';
 import CodeScreen from '../features/connections/screens/CodeScreen';
@@ -23,6 +24,7 @@ import ChatsScreen from '../features/chat/screens/ChatsScreen';
 import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 import { hasSeenWelcome, welcomeSeenNow } from '../services/onboarding';
+import useReducedMotion from '../hooks/useReducedMotion';
 import { diagnosticScreen } from '../services/diagnostics';
 
 import type { RootStackParamList, AuthStackParamList } from './types';
@@ -33,6 +35,8 @@ const screenOptions = { headerShown: false, contentStyle: { backgroundColor: col
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 
 export default function RootNavigator() {
+  const reducedMotion = useReducedMotion();
+  const motionScreenOptions = { ...screenOptions, animation: reducedMotion ? 'none' as const : screenOptions.animation };
   const [user, setUser] = useState<User | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
@@ -46,8 +50,28 @@ export default function RootNavigator() {
     let active = true;
     let version = 0;
     let pushListener: ReturnType<typeof Notifications.addPushTokenListener> | undefined;
+    let timedOut = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const clearDeadline = () => { if (deadline !== undefined) clearTimeout(deadline); deadline = undefined; };
+    const armDeadline = () => {
+      clearDeadline();
+      deadline = setTimeout(() => {
+        if (!active) return;
+        timedOut = true;
+        ++version; // Late network results must not replace the recovery screen.
+        clearDeadline();
+        pushListener?.remove();
+        pushListener = undefined;
+        setSetupError('Loading your account took too long. Check your connection and try again.');
+        setCheckingAuth(false);
+      }, 20_000);
+    };
+    // Covers both a missing native auth callback and stalled setup requests.
+    armDeadline();
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (!active || timedOut) return;
       const currentVersion = ++version;
+      if (deadline === undefined) armDeadline();
       pushListener?.remove();
       pushListener = undefined;
       setCheckingAuth(true);
@@ -64,35 +88,41 @@ export default function RootNavigator() {
           if (nextStage === 'ready') resume = await findActiveConnection(u.uid).catch(() => null);
         }
         if (!active || currentVersion !== version) return;
+        clearDeadline();
         setStage(nextStage);
         setResumeConnectionId(resume);
         setCheckingAuth(false);
-        if (u && Platform.OS !== 'web') {
+        if (u && nextStage === 'ready' && Platform.OS !== 'web') {
           const refreshPush = () => registerForPush(u.uid).catch(() => console.warn('Notification registration could not be completed.'));
           void refreshPush();
-          pushListener = Notifications.addPushTokenListener(() => void refreshPush());
+          pushListener = Notifications.addPushTokenListener((token) => {
+            void refreshPushToken(u.uid, token).catch(() => console.warn('Notification token refresh could not be completed.'));
+          });
         }
       } catch (err) {
         if (!active || currentVersion !== version) return;
+        clearDeadline();
         setSetupError(errorMessage(err, 'Your account could not be loaded. Try again.'));
         setCheckingAuth(false);
       }
     }, (err) => {
-      if (!active) return;
+      if (!active || timedOut) return;
+      ++version;
+      clearDeadline();
       setSetupError(errorMessage(err, 'Sign in could not be checked.'));
       setCheckingAuth(false);
     });
-    return () => { active = false; unsubscribe(); pushListener?.remove(); };
+    return () => { active = false; ++version; clearDeadline(); unsubscribe(); pushListener?.remove(); };
   }, [retry]);
 
   if (setupError) {
     return (
-      <View style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 16, backgroundColor: colors.bg }}>
+      <View testID="startup-error" style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 16, backgroundColor: colors.bg }}>
         <Text style={{ color: colors.danger }}>{setupError}</Text>
-        <TouchableOpacity accessibilityRole="button" onPress={() => setRetry((value) => value + 1)}>
+        <TouchableOpacity testID="startup-retry" accessibilityRole="button" onPress={() => setRetry((value) => value + 1)}>
           <Text style={{ color: colors.accentText }}>Try again</Text>
         </TouchableOpacity>
-        <TouchableOpacity accessibilityRole="button" onPress={() => void signOut(auth).catch(() => setSetupError('Could not sign out. Try again.'))}>
+        <TouchableOpacity testID="startup-signout" accessibilityRole="button" onPress={() => void signOut(auth).then(() => setRetry((value) => value + 1)).catch(() => setSetupError('Could not sign out. Try again.'))}>
           <Text style={{ color: colors.textPrimary }}>Sign out</Text>
         </TouchableOpacity>
       </View>
@@ -101,12 +131,13 @@ export default function RootNavigator() {
 
   if (checkingAuth) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.accentFill} />
+      <View testID="startup-loading" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator accessibilityLabel="Loading Passway" color={colors.accentFill} />
       </View>
     );
   }
 
+  if (user && stage === 'deleting') return <DeletionRecoveryScreen />;
   if (user && stage === 'under_minimum') return <UnderAgeScreen />;
   if (user && stage === 'needs_age') return <AgeCheckScreen onResult={(confirmed) => setStage(confirmed ? 'ready' : 'under_minimum')} />;
 
@@ -114,7 +145,7 @@ export default function RootNavigator() {
     <NavigationContainer theme={navTheme} onReady={() => diagnosticScreen(user ? (resumeConnectionId ? 'Chats' : 'Generate') : (welcomeSeen ? 'PhoneAuth' : 'Welcome'))}
       onStateChange={(state) => { const route = state?.routes[state.index ?? 0]; if (route) diagnosticScreen(route.name); }}>
       {user ? (
-        <Stack.Navigator key="app" screenOptions={screenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
+        <Stack.Navigator key="app" screenOptions={motionScreenOptions} initialRouteName={resumeConnectionId ? 'Chats' : 'Generate'}>
           <Stack.Screen name="Generate" component={GenerateScreen} />
           <Stack.Screen name="Code" component={CodeScreen} />
           <Stack.Screen name="EnterCode" component={EnterCodeScreen} />
@@ -125,7 +156,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
         </Stack.Navigator>
       ) : (
-        <AuthStack.Navigator key="auth" screenOptions={screenOptions} initialRouteName={welcomeSeen || welcomeSeenNow() ? 'PhoneAuth' : 'Welcome'}>
+        <AuthStack.Navigator key="auth" screenOptions={motionScreenOptions} initialRouteName={welcomeSeen || welcomeSeenNow() ? 'PhoneAuth' : 'Welcome'}>
           <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
           <AuthStack.Screen name="PhoneAuth" component={PhoneAuthScreen} />
         </AuthStack.Navigator>

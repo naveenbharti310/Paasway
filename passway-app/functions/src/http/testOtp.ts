@@ -5,6 +5,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { auth, db } from '../lib/firebase';
 import { Timestamp } from 'firebase-admin/firestore';
 import { checkAppCheck } from './server';
+import { readJson, assertAllowedOrigin } from './request';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const ref = (id: string) => db.collection('rateLimits').doc(`testOtp_${id}`);
@@ -117,19 +118,15 @@ async function verify(challengeId: unknown, code: unknown) {
 }
 
 export async function handleTestOtp(request: Request, name: string): Promise<Response> {
-  const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
   const legacy = ['testOtpSend', 'testOtpVerify'].includes(name);
   const enabled = process.env.TWOFACTOR_ENABLED === 'true' || (legacy && process.env.TWOFACTOR_TEST_ENABLED === 'true');
   if ((!legacy && !['otpSend', 'otpVerify'].includes(name)) || !enabled || !process.env.TWOFACTOR_API_KEY) return respond(404, { error: { status: 'NOT_FOUND', message: 'SMS login is not enabled.' } });
   if (request.method !== 'POST') return respond(405, { error: { message: 'Use POST.' } });
   try {
     await checkAppCheck(request);
-    const origin = request.headers.get('origin');
-    if (origin && !(process.env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).includes(origin)) throw new HttpsError('permission-denied', 'This website is not allowed.');
-    const text = await request.text();
-    if (text.length > 1024) throw new HttpsError('invalid-argument', 'Request is too large.');
-    let data;
-    try { data = JSON.parse(text); } catch { throw new HttpsError('invalid-argument', 'Request data is required.'); }
+    assertAllowedOrigin(request);
+    const data = await readJson(request, 1024) as Record<string, unknown> | null;
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new HttpsError('invalid-argument', 'Request data is required.');
     const result = ['otpSend', 'testOtpSend'].includes(name) ? await send(data.phone, request) : await verify(data.challengeId, data.code);
     return respond(200, { result });

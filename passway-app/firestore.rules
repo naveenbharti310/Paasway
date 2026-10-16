@@ -9,6 +9,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn() && request.auth.uid == userId
+        && !exists(/databases/$(database)/documents/accountDeletions/$(userId))
         && request.resource.data.keys().hasAll(['userId', 'status', 'createdAt'])
         && request.resource.data.keys().hasOnly(['userId', 'status', 'createdAt', 'displayName', 'pushToken'])
         && request.resource.data.userId == userId
@@ -17,7 +18,7 @@ service cloud.firestore {
         && request.resource.data.createdAt > 0
         && validProfile(request.resource.data);
       allow update: if signedIn() && request.auth.uid == userId
-        && resource.data.status != 'banned'
+        && resource.data.status in ['active', 'reported']
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'pushToken'])
         && validProfile(request.resource.data);
       // A private note about someone you are chatting with, seen only by you.
@@ -28,6 +29,7 @@ service cloud.firestore {
         }
         allow read, delete: if signedIn() && request.auth.uid == userId;
         allow create, update: if signedIn() && request.auth.uid == userId
+          && get(/databases/$(database)/documents/users/$(userId)).data.status in ['active', 'reported']
           && exists(/databases/$(database)/documents/connections/$(connectionId)) && inChat()
           && request.resource.data.keys().hasOnly(['note', 'updatedAt'])
           && request.resource.data.note is string
@@ -44,13 +46,15 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == resource.data.userA || request.auth.uid == resource.data.userB);
       allow write: if false;
       match /messages/{messageId} {
-        // Once a chat ends, neither person can read its messages again.
-        allow read: if signedIn() && get(/databases/$(database)/documents/connections/$(connectionId)).data.status == 'active' && (request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userA || request.auth.uid == get(/databases/$(database)/documents/connections/$(connectionId)).data.userB);
+        // Server-only body access enforces server-clock 72h expiry independently
+        // of physical cleanup and extended safety-evidence retention.
+        allow read: if false;
         allow write: if false;
       }
     }
     match /reports/{reportId} { allow read, write: if false; }
     match /blocks/{blockId} { allow read, write: if false; }
+    match /accountDeletions/{jobId} { allow read, write: if false; }
     match /accountHolds/{holdId} { allow read, write: if false; }
     match /rateLimits/{counterId} { allow read, write: if false; }
     match /system/{documentId} { allow read, write: if false; }

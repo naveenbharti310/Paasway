@@ -7,7 +7,7 @@ export interface User {
   userId: string;
   displayName?: string;
   pushToken?: string;
-  status: 'active' | 'reported' | 'banned';
+  status: 'active' | 'reported' | 'banned' | 'deleting';
   createdAt: number;
 }
 

@@ -1,0 +1,31 @@
+process.env.MODERATION_PROVIDER='rules';
+const {test,beforeEach,afterEach}=require('node:test');const assert=require('node:assert/strict');const {MemoryFirestore}=require('./support.cjs');const firebase=require('../lib/lib/firebase');const push=require('../lib/push');const originalNotify=push.notifyUser;const {redeemTid}=require('../lib/handlers/tids');const {respondToRequest,endConnection}=require('../lib/handlers/connections');const {encodeGeohash}=require('../lib/geo');let db,notifications;const originalNow=Date.now;
+const intent={tid:'AB12',displayName:'Bob',lat:28.6,lng:77.2,redemptionId:'secure-random-intent-0001'};const call=(data=intent,uid='bob')=>redeemTid.run({auth:{uid},data});
+function seedCode(){db.seed('tids/AB12',{tid:'AB12',generatorId:'alice',generatorName:'Alice',status:'active',geoHash:encodeGeohash(28.6,77.2),createdAt:Date.now(),expiresAt:Date.now()+300000})}
+beforeEach(()=>{db=new MemoryFirestore();for(const uid of ['alice','bob','carol'])db.seed(`users/${uid}`,{status:'active',ageConfirmedAt:1});firebase.db=db;notifications=0;push.notifyUser=async()=>{notifications++};seedCode()});afterEach(()=>{push.notifyUser=originalNotify;Date.now=originalNow});
+test('lost response after committed redemption can recover the original request without another notification',async()=>{let committed;await assert.rejects((async()=>{committed=await call();throw Error('Synthetic transport lost acknowledgement')})(),/lost acknowledgement/);const recovered=await call();assert.equal(recovered.requestId,committed.requestId);assert.equal(recovered.expiresAt,committed.expiresAt);assert.equal(notifications,1);assert.equal([...db.values.keys()].filter(x=>x.startsWith('connectionRequests/')).length,1)});
+test('same-intent concurrent redemptions converge on one request',async()=>{const results=await Promise.all([call(),call(),call()]);assert.equal(new Set(results.map(x=>x.requestId)).size,1);assert.equal(notifications,1)});
+test('legacy clients retain strict single-use code semantics',async()=>{const {redemptionId,...legacy}=intent;await call(legacy);await assert.rejects(call(legacy),{code:'not-found'})});
+for(const value of ['',null,12,'short','x'.repeat(129),'a'.repeat(20)+'/'])test(`invalid intent key rejected (${JSON.stringify(value).slice(0,30)})`,async()=>{await assert.rejects(call({...intent,redemptionId:value}),{code:'invalid-argument'});assert.equal(db.read('tids/AB12').status,'active')});
+test('intent key is scoped to authenticated requester, not reusable by a different account',async()=>{await call();await assert.rejects(call(intent,'carol'),{code:'not-found'})});
+test('same key cannot silently change the display name',async()=>{await call();await assert.rejects(call({...intent,displayName:'Someone else'}),{code:'not-found'})});
+test('same key cannot silently claim a different code',async()=>{await call();db.seed('tids/CD34',{...db.read('tids/AB12'),tid:'CD34',status:'active'});await assert.rejects(call({...intent,tid:'CD34'}),{code:'not-found'});assert.equal(db.read('tids/CD34').status,'active')});
+test('a replay cannot attach an old request to a reused code incarnation',async()=>{await call();const old=db.read('tids/AB12');db.seed('tids/AB12',{...old,status:'active',createdAt:old.createdAt+1});await assert.rejects(call(),{code:'not-found'});assert.equal(db.read('tids/AB12').status,'active')});
+test('pending replay still requires proximity',async()=>{await call();await assert.rejects(call({...intent,lat:0,lng:0}),{code:'not-found'})});
+for(const blockedBy of ['alice:bob','bob:alice'])test(`replay rechecks ${blockedBy} block`,async()=>{await call();db.seed(`blocks/${blockedBy}`,{createdAt:Date.now()});await assert.rejects(call(),{code:'not-found'})});
+for(const uid of ['alice','bob'])test(`replay rechecks ${uid} account activity`,async()=>{await call();db.seed(`users/${uid}`,{status:'banned'});await assert.rejects(call(),{code:'permission-denied'})});
+test('replay rechecks diagnostic isolation',async()=>{await call();db.seed('users/alice',{status:'active',ageConfirmedAt:1,automatedTest:true});await assert.rejects(call())});
+test('replay never extends the original request expiry',async()=>{const first=await call();const p=`connectionRequests/${first.requestId}`;db.seed(p,{...db.read(p),expiresAt:Date.now()-1});await assert.rejects(call(),{code:'not-found'})});
+test('declined request cannot be revived by replaying a key',async()=>{const first=await call();await respondToRequest.run({auth:{uid:'alice'},data:{requestId:first.requestId,accept:false}});await assert.rejects(call(),{code:'not-found'})});
+test('accepted-before-retry request is recoverable without creating another connection',async()=>{const first=await call();await respondToRequest.run({auth:{uid:'alice'},data:{requestId:first.requestId,accept:true}});assert.equal((await call()).requestId,first.requestId);assert.equal(notifications,1);assert.equal([...db.values.keys()].filter(x=>x.startsWith('connections/')).length,1)});
+test('accepted replay cannot reopen an ended connection',async()=>{const first=await call();const connection=await respondToRequest.run({auth:{uid:'alice'},data:{requestId:first.requestId,accept:true}});await endConnection.run({auth:{uid:'bob'},data:connection});await assert.rejects(call(),{code:'not-found'})});
+test('accepted replay rejects mismatched connection participants',async()=>{const first=await call();const connection=await respondToRequest.run({auth:{uid:'alice'},data:{requestId:first.requestId,accept:true}});const p=`connections/${connection.connectionId}`;db.seed(p,{...db.read(p),userB:'carol'});await assert.rejects(call(),{code:'not-found'})});
+
+for(const replay of [false,true])test(`expiry crossed during account/block checks fails closed (replay=${replay})`,async()=>{
+ if(replay)await call();const expiry=db.read('tids/AB12').expiresAt;
+ const originalTransaction=db.runTransaction.bind(db);
+ db.runTransaction=fn=>originalTransaction(tx=>fn({...tx,get:async ref=>{const snap=await tx.get(ref);if(ref.path.startsWith('blocks/'))Date.now=()=>expiry+1;return snap}}));
+ await assert.rejects(call(),{code:'not-found'});
+ assert.equal(notifications,replay?1:0);
+ if(!replay)assert.equal(db.read('tids/AB12').status,'active');
+});

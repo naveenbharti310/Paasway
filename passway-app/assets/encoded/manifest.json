@@ -1,0 +1,42 @@
+[
+  {
+    "source": "assets/encoded/Manrope-Bold.ttf.base64",
+    "target": "assets/fonts/Manrope-Bold.ttf",
+    "sha256": "991bdffec9bb9ab2487cab2b46d41130575625b20c31ff51327eb2c3d75ea078"
+  },
+  {
+    "source": "assets/encoded/Manrope-Medium.ttf.base64",
+    "target": "assets/fonts/Manrope-Medium.ttf",
+    "sha256": "7956dd46dc29c3eea4fe2f509cbe665623a07ba7a3ff055baf75b7e7d1f63882"
+  },
+  {
+    "source": "assets/encoded/Manrope-Regular.ttf.base64",
+    "target": "assets/fonts/Manrope-Regular.ttf",
+    "sha256": "708e26d806929c915a0206d02d61a6129a95f9367d338703b85e6b14709bc3c1"
+  },
+  {
+    "source": "assets/encoded/Manrope-SemiBold.ttf.base64",
+    "target": "assets/fonts/Manrope-SemiBold.ttf",
+    "sha256": "e308c1b513801127a3f4e06ce96d691e61900ad09ca79a20d1bb6a84558cd0ae"
+  },
+  {
+    "source": "assets/encoded/choose.png.base64",
+    "target": "assets/illustrations/choose.png",
+    "sha256": "7ea068c062cb6bb8435d7215aba938aac226f7edbc050a8fb3212434c66728d2"
+  },
+  {
+    "source": "assets/encoded/code.png.base64",
+    "target": "assets/illustrations/code.png",
+    "sha256": "80781140ad22753269800c3f5954a42cfef040d5812b15f5fc881c7b4218274d"
+  },
+  {
+    "source": "assets/encoded/meet.png.base64",
+    "target": "assets/illustrations/meet.png",
+    "sha256": "d072d02014f2bcc8b76c8ce735b031515e5289514a7ed1f744333bd0f533b0d4"
+  },
+  {
+    "source": "assets/encoded/temporary.png.base64",
+    "target": "assets/illustrations/temporary.png",
+    "sha256": "9c98ddc36f745e8642b0c261d7aaec9177a3aaa23cda540b9aa6644b1b58e8d4"
+  }
+]

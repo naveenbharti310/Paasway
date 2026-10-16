@@ -2,12 +2,13 @@ import { createHash } from 'node:crypto';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
+import { holdRef } from '../lib/accounts';
 import { recordBlock } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { documentId, text } from '../lib/validation';
 import { retentionDate, applyMessageRetention } from '../lib/retention';
 import { connectionRef, loadParticipantConnection, markEnded } from '../services/connections';
-import { REPORTED_RETENTION_MS, MAX_SAFETY_ACTIONS_PER_HOUR, MAX_REASON_LENGTH } from '../constants';
+import { REPORTED_HOLD_MS, REPORTED_RETENTION_MS, MAX_SAFETY_ACTIONS_PER_HOUR, MAX_REASON_LENGTH } from '../constants';
 
 async function safetyRateLimit(uid: string): Promise<void> {
   if (!await withinRateLimit(uid, 'safety', MAX_SAFETY_ACTIONS_PER_HOUR)) throw new HttpsError('resource-exhausted', 'Too many attempts. Try again shortly.');
@@ -27,12 +28,19 @@ export const fileReport = authedCallable(async (uid, data) => {
     const existing = await tx.get(reportRef);
     const reportedRef = db.collection('users').doc(reportedId);
     const reported = await tx.get(reportedRef);
+    const deletion = await tx.get(db.collection('accountDeletions').doc(reportedId));
+    const phoneHash = reported.data()?.phoneHash ?? deletion.data()?.phoneHash;
+    const phoneHoldRef = typeof phoneHash === 'string' ? holdRef(phoneHash) : undefined;
+    const phoneHold = phoneHoldRef ? (await tx.get(phoneHoldRef)).data() : undefined;
     if (existing.exists) return;
     const now = Date.now();
     const hold = retentionDate(connection.deleteAt, new Date(now + REPORTED_RETENTION_MS));
     tx.create(reportRef, { reportId, reporterId: uid, reportedId, connectionId, reason, status: 'open', createdAt: now, deleteAt: hold });
     markEnded(tx, ref, connection, uid, now, { reportedAt: now, reportedBy: uid }, hold);
     recordBlock(tx, uid, reportedId, connectionId, now);
+    // Review is not a participation ban. Preserve under-age, banned and
+    // unknown administrative restrictions, including their original expiry.
+    if (phoneHoldRef && (!phoneHold || phoneHold.status === 'reported')) tx.set(phoneHoldRef, { status: 'reported', updatedAt: now, deleteAt: retentionDate(phoneHold?.deleteAt, new Date(now + REPORTED_HOLD_MS)) });
     if (reported.exists && reported.data()?.status === 'active') tx.update(reportedRef, { status: 'reported' });
   });
   await applyMessageRetention(ref);

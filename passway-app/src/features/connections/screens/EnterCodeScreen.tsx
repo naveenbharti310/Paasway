@@ -1,3 +1,4 @@
+import { connectionNow, type ConnectionClock } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import type { RootNavigationProp } from '../../../navigation/types';
 import { useEffect, useRef, useState } from 'react';
@@ -5,7 +6,7 @@ import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
-import { redeemTid } from '../api/connections';
+import { newRedemptionId, redeemTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
 import { colors } from '../../../theme/colors';
@@ -22,6 +23,9 @@ export default function EnterCodeScreen() {
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [requestExpiresAt, setRequestExpiresAt] = useState<number | null>(null);
+  const [requestClock, setRequestClock] = useState<ConnectionClock | undefined>();
+  const connectInFlight = useRef(false);
+  const redemptionIntent = useRef<{ tid: string; displayName: string; id: string } | null>(null);
   const inputs = useRef<Array<TextInput | null>>([]);
   const uid = auth.currentUser?.uid ?? '';
 
@@ -60,7 +64,7 @@ export default function EnterCodeScreen() {
   }
 
   async function handleConnect() {
-    if (loading || requestId) return;
+    if (connectInFlight.current || loading || requestId) return;
     const code = digits.join('');
     if (code.length !== 4) {
       setError('Enter all four characters');
@@ -70,47 +74,61 @@ export default function EnterCodeScreen() {
       setError('Enter a name to show the other person');
       return;
     }
+    connectInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
+      const displayName = name.trim();
+      if (redemptionIntent.current?.tid !== code || redemptionIntent.current.displayName !== displayName) {
+        redemptionIntent.current = { tid: code, displayName, id: newRedemptionId() };
+      }
+      const redemptionId = redemptionIntent.current.id;
       const { lat, lng } = await getCurrentLocation();
-      const result = await redeemTid({ tid: code, lat, lng, displayName: name.trim() });
+      const result = await redeemTid({ tid: code, lat, lng, displayName, redemptionId });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
+      setRequestClock(result.clock);
       setRequestExpiresAt(result.expiresAt);
       setRequestId(result.requestId);
     } catch (err: unknown) {
       setError(errorMessage(err, 'That code did not work. Check it and try again.'));
     } finally {
+      connectInFlight.current = false;
       setLoading(false);
     }
   }
 
   useEffect(() => {
     if (!requestId) return;
-    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), (snap) => {
+    let active = true;
+    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
       const data = snap.data();
+      // Cache absence is not a server rejection of this newly created request.
+      if (!data && snap.metadata.fromCache) return;
       if (!data) {
         setError('This request is no longer available.');
         setRequestId(null);
         return;
       }
       if (data.status === 'accepted' && typeof data.connectionId === 'string') {
-        navigation.replace('Chat', { connectionId: data.connectionId });
+        active = false; // Metadata-only replays cannot navigate a second time.
+        navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: data.connectionId } }] });
       } else if (data.status === 'declined' || data.status === 'expired') {
         setError('That code is no longer available.');
         setRequestId(null);
       }
     }, (err) => {
+      if (!active) return;
       setError(errorMessage(err, 'Could not check the request.'));
       setRequestId(null);
     });
-    return unsubscribe;
+    return () => { active = false; unsubscribe(); };
   }, [requestId, navigation]);
 
   useEffect(() => {
     if (!requestId || !requestExpiresAt) return;
     const checkExpiry = () => {
-      if (Date.now() >= requestExpiresAt) {
+      if (connectionNow(requestClock) >= requestExpiresAt) {
         setRequestId(null);
         setError('The request expired. Ask them to generate a new code.');
       }
@@ -118,14 +136,14 @@ export default function EnterCodeScreen() {
     checkExpiry();
     const timer = setInterval(checkExpiry, 1000);
     return () => clearInterval(timer);
-  }, [requestId, requestExpiresAt]);
+  }, [requestId, requestExpiresAt, requestClock]);
 
   if (requestId) {
     return (
       <View style={styles.container}>
         <ScreenHeader showBack={false} />
         <View style={styles.center}>
-          <View style={styles.pulse}><ActivityIndicator color={colors.gold} size="large" /></View>
+          <View style={styles.pulse}><ActivityIndicator accessibilityLabel="Waiting for connection acceptance" color={colors.gold} size="large" /></View>
           <Text style={styles.title}>Waiting for them to accept</Text>
           <Text style={styles.helper}>They will see your name and choose to accept or decline.</Text>
         </View>
@@ -167,11 +185,11 @@ export default function EnterCodeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingBottom: 40 },
-  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 290, lineHeight: 22, marginBottom: 6 },
+  title: { fontFamily: 'Passway-Bold', fontSize: 32, color: colors.textPrimary, textAlign: 'left', letterSpacing: -0.4 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'left', maxWidth: 420, lineHeight: 22, marginBottom: 6 },
   pulse: { width: 84, height: 84, borderRadius: 42, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   otpRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  otpBox: { width: 60, height: 70, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: '700', color: colors.textPrimary },
+  otpBox: { width: 60, height: 76, borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.surface, borderRadius: 20, textAlign: 'center', fontFamily: 'Passway-Bold', fontSize: 30, color: colors.textPrimary },
   otpBoxFilled: { borderColor: colors.gold, color: colors.gold },
-  error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, alignSelf: 'flex-start' },
 });

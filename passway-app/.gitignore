@@ -2,3 +2,10 @@
 # Built from assets/src by scripts/make-icons.cjs
 assets/*.png
 .expo/
+
+# Decoded from versioned assets/encoded at npm install
+assets/fonts/*.ttf
+assets/illustrations/*.png
+
+# Raw registry audit and installed-remediation proof
+security-results/

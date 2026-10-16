@@ -1,5 +1,5 @@
 import { errorMessage } from '../../../services/errors';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import FormScreen from '../../../components/FormScreen';
 import { useNavigation } from '@react-navigation/native';
@@ -9,7 +9,8 @@ import { beginPhoneSignIn, usesTwoFactorSms, type PhoneConfirmation } from '../a
 import { colors } from '../../../theme/colors';
 import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
-import IconBadge from '../../../components/IconBadge';
+import HeroIllustration from '../../../components/HeroIllustration';
+import TrustLine from '../../../components/TrustLine';
 import Brand from '../../../components/Brand';
 import { diagnosticsEnabled } from '../../../services/diagnostics';
 
@@ -27,35 +28,40 @@ export default function PhoneAuthScreen() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [confirmation, setConfirmation] = useState<PhoneConfirmation | null>(null);
+  const authInFlight = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSendCode() {
-    if (loading) return;
+    if (authInFlight.current || loading) return;
     const number = indianNumber(phone);
     if (!number) {
       setError('Enter a 10 digit Indian mobile number');
       return;
     }
+    authInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
       // 2Factor verifies server-side; Firebase SMS remains available by build setting.
       const result = await beginPhoneSignIn(number);
       setConfirmation(result);
+      setCode('');
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not send a code. Check the number and try again.'));
     } finally {
+      authInFlight.current = false;
       setLoading(false);
     }
   }
 
   async function handleVerifyCode() {
-    if (loading) return;
+    if (authInFlight.current || loading) return;
     if (!confirmation || !/^\d{6}$/.test(code.trim())) {
       setError('Enter the 6 digit code');
       return;
     }
+    authInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -65,13 +71,14 @@ export default function PhoneAuthScreen() {
     } catch (err: unknown) {
       setError(errorMessage(err, 'That code did not match. Try again.'));
     } finally {
+      authInFlight.current = false;
       setLoading(false);
     }
   }
 
   return (
     <FormScreen header={<View style={styles.top}><Brand /></View>}>
-        <IconBadge icon="phone" />
+        <HeroIllustration scene="choose" compact />
         {!confirmation ? (
           <>
             <Text style={styles.title} accessibilityRole="header">Your phone number</Text>
@@ -83,6 +90,7 @@ export default function PhoneAuthScreen() {
             <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
+            <TrustLine label="Never shown to people you connect with." />
             <Text style={styles.notice}>Passway is for people aged 18 and over.</Text>
             <Button label="How Passway works" variant="ghost" onPress={() => navigation.navigate('Welcome')} testID="how-it-works" />
           </>
@@ -94,7 +102,7 @@ export default function PhoneAuthScreen() {
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Verify" onPress={handleVerifyCode} loading={loading} testID="verify" />
             <Button label="Send another code" variant="secondary" onPress={handleSendCode} disabled={loading} />
-            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { setConfirmation(null); setCode(''); setError(null); }} />
+            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { if (authInFlight.current) return; setConfirmation(null); setCode(''); setError(null); }} />
           </>
         )}
     </FormScreen>
@@ -103,9 +111,9 @@ export default function PhoneAuthScreen() {
 
 const styles = StyleSheet.create({
   top: { minHeight: 44, justifyContent: 'center' },
-  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22, marginBottom: 8 },
-  hint: { fontSize: 13, color: colors.gold, textAlign: 'center', maxWidth: 300, lineHeight: 19, backgroundColor: colors.accentBg, padding: 12, borderRadius: 12, overflow: 'hidden' },
-  error: { fontSize: 13, color: colors.danger, alignSelf: 'flex-start' },
-  notice: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
+  title: { fontFamily: 'Passway-Bold', fontSize: 32, color: colors.textPrimary, textAlign: 'left', letterSpacing: -0.8 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'left', maxWidth: 420, lineHeight: 22, marginBottom: 8 },
+  hint: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.gold, textAlign: 'left', maxWidth: 420, lineHeight: 19, backgroundColor: colors.accentBg, padding: 12, borderRadius: 12, overflow: 'hidden' },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, alignSelf: 'flex-start' },
+  notice: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textMuted, textAlign: 'left' },
 });

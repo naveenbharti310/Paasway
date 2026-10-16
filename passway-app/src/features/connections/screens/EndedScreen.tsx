@@ -40,7 +40,7 @@ export default function EndedScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
-  title: { fontSize: 26, fontWeight: '700', color: colors.textPrimary, letterSpacing: -0.4 },
-  helper: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22 },
+  title: { fontFamily: 'Passway-Bold', fontSize: 26, color: colors.textPrimary, letterSpacing: -0.4 },
+  helper: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'center', maxWidth: 300, lineHeight: 22 },
   button: { marginTop: 16 },
 });

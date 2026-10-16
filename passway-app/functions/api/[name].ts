@@ -10,7 +10,8 @@ export async function POST(request: Request): Promise<Response> {
   const response = ['otpSend', 'otpVerify', 'testOtpSend', 'testOtpVerify'].includes(name)
     ? await handleTestOtp(request, name)
     : await handleCallable(request, name);
-  waitUntil(maybeRunMaintenance().catch((error) => log.error('Maintenance failed', { error: String(error) })));
+  // Invalid traffic must not create maintenance DB work; cron covers idle periods.
+  if (response.ok) waitUntil(maybeRunMaintenance().catch(() => log.error('Maintenance failed')));
   return withCors(request, response);
 }
 

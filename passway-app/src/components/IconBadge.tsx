@@ -20,10 +20,10 @@ export default function IconBadge({ icon, tone = 'accent' }: Props) {
 }
 
 const styles = StyleSheet.create({
-  ring: { width: 92, height: 92, borderRadius: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, marginBottom: 6 },
-  ringAccent: { borderColor: '#2A2418' },
+  ring: { width: 92, height: 92, borderRadius: 30, alignItems: 'center', justifyContent: 'center', borderWidth: 1, marginBottom: 6 },
+  ringAccent: { borderColor: colors.border },
   ringNeutral: { borderColor: colors.border },
-  badge: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center' },
+  badge: { width: 70, height: 70, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   accent: { backgroundColor: colors.accentBg },
   neutral: { backgroundColor: colors.surface },
 });

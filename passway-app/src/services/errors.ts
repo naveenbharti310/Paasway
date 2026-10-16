@@ -1,5 +1,21 @@
-// Native Firebase errors carry codes such as "functions/unavailable" or
-// "auth/too-many-requests". The service prefix is dropped before matching.
+// Auth/web errors carry service prefixes. RNFirebase 26 callable errors use
+// bare codes; normalize only at the callable boundary, not for arbitrary SDKs.
+const CALLABLE_CODES = new Set([
+  'cancelled', 'unknown', 'invalid-argument', 'deadline-exceeded', 'not-found',
+  'already-exists', 'permission-denied', 'unauthenticated', 'resource-exhausted',
+  'failed-precondition', 'aborted', 'out-of-range', 'unimplemented', 'internal',
+  'unavailable', 'data-loss',
+]);
+
+export function normalizeCallableError(error: unknown): unknown {
+  if (!(error instanceof Error) || !('code' in error)) return error;
+  const code = (error as Error & { code: unknown }).code;
+  if (typeof code !== 'string' || !CALLABLE_CODES.has(code)) return error;
+  // Do not mutate SDK errors or copy opaque details, which may contain private
+  // data. Existing prefixed errors and non-callable exceptions stay untouched.
+  return Object.assign(new Error(error.message), { code: `functions/${code}` });
+}
+
 const MESSAGES: Record<string, string> = {
   'network-request-failed': 'Could not connect. Check your internet connection and try again.',
   unavailable: 'Could not connect. Check your internet connection and try again.',
@@ -13,7 +29,7 @@ const MESSAGES: Record<string, string> = {
   'permission-denied': 'This action is not available for your account.',
   unauthenticated: 'Your session has ended. Sign in again.',
   // Firebase only sends real text messages on a paid plan.
-  'billing-not-enabled': 'Sign in by text message is not switched on yet. For now, use a test number such as 99999 00001 with the code 123456.',
+  'billing-not-enabled': 'Text-message sign-in is not available right now. Please try again later.',
 };
 
 export function errorCode(error: unknown): string {

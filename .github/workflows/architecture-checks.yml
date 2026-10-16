@@ -1,0 +1,99 @@
+name: Architecture regression and security gates
+# Source Actions startup is verified working by run38923294297 (Oct16).
+# PR/push gates are credential-free; central exact-source checks remain an
+# independent repeat, not a substitute for a failing source workflow.
+on:
+  pull_request:
+    paths:
+      - 'passway-app/**'
+      - '.github/workflows/architecture-checks.yml'
+      - '.github/tests/**'
+  push:
+    branches: [main]
+    paths:
+      - 'passway-app/**'
+      - '.github/workflows/architecture-checks.yml'
+      - '.github/tests/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: architecture-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: passway-app
+    env:
+      CI: '1'
+      EXPO_PUBLIC_OTP_PROVIDER: 2factor
+      EXPO_PUBLIC_APP_CHECK: 'off'
+      EXPO_PUBLIC_API_URL: https://example.invalid
+      EXPO_PUBLIC_FIREBASE_WEB_API_KEY: build-only-not-a-live-key
+      EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-passway.firebaseapp.com
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: demo-passway
+      EXPO_PUBLIC_FIREBASE_WEB_APP_ID: '1:123456789:web:buildonly'
+      EXPO_PUBLIC_FIREBASE_SENDER_ID: '123456789'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            passway-app/package-lock.json
+            passway-app/functions/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm ci --prefix functions
+      - name: Verify dependency-gate policy cannot drift
+        run: node --test ../.github/tests/dependency-gate.test.cjs
+      - run: npm run test:mobile
+      - run: npm run typecheck && npm run typecheck --prefix functions
+      - run: npm test --prefix functions
+      - run: npm run test:emulator
+      - run: npx --no-install expo export --platform all --output-dir dist-ci
+      - name: Exercise controlled build-only web preview helper
+        env:
+          EXPO_PUBLIC_API_URL: http://127.0.0.1:8787
+        run: npm run preview:web
+  dependency-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: passway-app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Backend production dependency audit
+        run: npm audit --package-lock-only --omit=dev --prefix functions --audit-level=high
+      - name: Install exact dependencies and hash-bound reviewed build-tool fixes
+        run: npm ci
+      # Raw registry audit is NOT clean. Match the central validation policy:
+      # verify installed hashes/exploits and exact reviewed advisory payloads.
+      # A new/changed/unreviewed high finding or absent remedy still blocks.
+      - name: Verify installed remediation and retain raw registry audit
+        run: npm run security:audit
+      - name: Run pinned upstream conformance against installed remedies
+        run: npm run security:conformance
+      - name: Preserve raw audit and installed-code evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dependency-remediation-proof-with-raw-audit
+          path: passway-app/security-results
+          if-no-files-found: error
+          retention-days: 3

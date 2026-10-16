@@ -1,20 +1,23 @@
 import { errorMessage } from '../../../services/errors';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Pressable, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { collection, query, orderBy, onSnapshot, doc, limitToLast } from '@react-native-firebase/firestore';
+import { onSnapshot, doc } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
-import { sendMessage } from '../api/messages';
+import { sendMessage, newMessageId } from '../api/messages';
+import { createMessageRetryState } from '../messageAttempt';
 import { endConnection } from '../../connections/api/connections';
 import { fileReport, blockUser } from '../../safety/api/reports';
 import { colors } from '../../../theme/colors';
+import useReducedMotion from '../../../hooks/useReducedMotion';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootStackParamList, RootNavigationProp, EndOutcome } from '../../../navigation/types';
 import { Message, Connection } from '../../../types/models';
 import SwipeToReply from '../components/SwipeToReply';
 import Avatar from '../../../components/Avatar';
 import Icon from '../../../components/Icon';
 import { tap } from '../../../services/haptics';
-import { saveNote, useNotes } from '../api/chats';
+import { saveNote, useNotes, useChatMessages } from '../api/chats';
 
 type ChatRouteProp = RouteProp<RootStackParamList, 'Chat'>;
 
@@ -57,14 +60,20 @@ const REPORT_REASONS = [
 
 export default function ChatScreen() {
   const navigation = useNavigation<RootNavigationProp>();
+  const reducedMotion = useReducedMotion();
+  const insets = useSafeAreaInsets();
   const { params } = useRoute<ChatRouteProp>();
   const { connectionId } = params;
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, error: messageLoadError } = useChatMessages(connectionId, auth.currentUser?.uid ?? '');
   const [connection, setConnection] = useState<Connection | null>(null);
   const [draft, setDraft] = useState('');
+  const messageAttempts = useRef(createMessageRetryState(newMessageId));
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const sendInFlight = useRef(false);
+  const safetyInFlight = useRef(false);
+  const noteInFlight = useRef(false);
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,37 +88,40 @@ export default function ChatScreen() {
   const note = notes[connectionId];
   const navigatedAway = useRef(false);
   const list = useRef<FlatList<Message>>(null);
+  const nearBottom = useRef(true);
+  const onMessageSize = useCallback(() => { if (nearBottom.current) list.current?.scrollToEnd({ animated: false }); }, []);
+  const messageKey = useCallback((item: Message) => item.messageId, []);
   const input = useRef<TextInput>(null);
   // Closing the options sheet can hand focus back to the message that was
   // pressed, so the message box is focused again just after it closes.
-  const focusInput = () => setTimeout(() => input.current?.focus(), 250);
+  const focusInput = useCallback(() => setTimeout(() => input.current?.focus(), 200), []);
   const currentUserId = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), (snap) => {
+    let active = true;
+    navigatedAway.current = false;
+    setConnection(null);
+    const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
       const data = (snap.data() as Connection) ?? null;
+      // A just-accepted connection may not exist in this device's local cache.
+      // Only an authoritative missing result can mean it has been removed.
+      if (!data && snap.metadata.fromCache) { setConnection(null); return; }
       setConnection(data);
       if ((!data || data.status === 'ended') && !navigatedAway.current) {
         navigatedAway.current = true;
         navigation.replace('Ended', { outcome: outcomeFor(data, currentUserId) });
       }
-    }, (err) => setError(errorMessage(err, 'Could not load this connection.')));
-    return unsubscribe;
+    }, (err) => { if (active) setError(errorMessage(err, 'Could not load this connection.')); });
+    return () => { active = false; unsubscribe(); };
   }, [connectionId, navigation, currentUserId]);
 
+  useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); }, [messageLoadError]);
+
   useEffect(() => {
-    const q = query(collection(db, 'connections', connectionId, 'messages'), orderBy('sentAt', 'asc'), limitToLast(200));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Expired messages can stay in the database until the next cleanup
-      // sweep, so hide anything past its deletion time.
-      const now = Date.now();
-      setMessages(snapshot.docs.filter((d) => {
-        const deleteAt = d.get('deleteAt') as { toMillis?: () => number } | undefined;
-        return !deleteAt?.toMillis || deleteAt.toMillis() > now;
-      }).map((d) => d.data() as Message));
-    }, (err) => setError(errorMessage(err, 'Could not load messages.')));
-    return unsubscribe;
-  }, [connectionId]);
+    if (replyingTo && !messages.some((message) => message.messageId === replyingTo.messageId)) setReplyingTo(null);
+    if (actionFor && !messages.some((message) => message.messageId === actionFor.messageId)) setActionFor(null);
+  }, [messages, replyingTo, actionFor]);
 
   // Going back always lands on the chats list, so an open chat is never
   // hidden somewhere the person cannot find it again.
@@ -126,102 +138,10 @@ export default function ChatScreen() {
   const otherName = connection ? (otherIsA ? connection.userAName : connection.userBName) : '';
   const otherId = connection ? (otherIsA ? connection.userA : connection.userB) : '';
 
-  const byId = new Map(messages.map((m) => [m.messageId, m]));
-  const nameOf = (m: Message) => (m.senderId === currentUserId ? 'You' : otherName || 'Them');
+  const byId = useMemo(() => new Map(messages.map((m) => [m.messageId, m])), [messages]);
+  const nameOf = useCallback((m: Message) => (m.senderId === currentUserId ? 'You' : otherName || 'Them'), [currentUserId, otherName]);
 
-  function leaveChat(outcome: EndOutcome = 'ended') {
-    if (navigatedAway.current) return;
-    navigatedAway.current = true;
-    navigation.replace('Ended', { outcome });
-  }
-
-  async function handleSend() {
-    const text = draft.trim();
-    if (!text || sending || ending || submitting || connection?.status !== 'active') return;
-    tap();
-    setSending(true);
-    setError(null);
-    try {
-      const result = await sendMessage({ connectionId, content: text, ...(replyingTo ? { replyTo: replyingTo.messageId } : {}) });
-      setDraft((current) => current.trim() === text ? '' : current);
-      setReplyingTo(null);
-      if (result.earlyContactShare) setSafetyNotice(true);
-    } catch (err) {
-      setError(errorMessage(err, 'Your message was not sent. Try again.'));
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function handleEnd() {
-    if (ending || submitting) return;
-    setMenuVisible(false);
-    setEnding(true);
-    setError(null);
-    try {
-      await endConnection({ connectionId });
-      leaveChat();
-    } catch (err) {
-      setError(errorMessage(err, 'Could not end the connection. Try again.'));
-    } finally {
-      setEnding(false);
-    }
-  }
-
-  async function handleBlock() {
-    if (ending || submitting) return;
-    setMenuVisible(false);
-    setEnding(true);
-    setError(null);
-    try {
-      await blockUser({ connectionId });
-      leaveChat('blocked');
-    } catch (err) {
-      setError(errorMessage(err, 'Could not block this person. Try again.'));
-    } finally {
-      setEnding(false);
-    }
-  }
-
-  async function handleReport(reason: string) {
-    if (submitting || ending || !otherId) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await fileReport({ connectionId, reportedId: otherId, reason });
-      setReportVisible(false);
-      leaveChat('reported');
-    } catch (err) {
-      setError(errorMessage(err, 'Your report was not saved. Try again.'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Back to chats" testID="chat-back" style={styles.back}>
-          <Icon name="back" size={26} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Avatar name={otherName} seed={connectionId} size={40} />
-        <TouchableOpacity style={styles.headerText} onPress={() => { setNoteDraft(note ?? ''); setNoteError(null); setNoteVisible(true); }} accessibilityRole="button" accessibilityLabel={`${otherName}${note ? `, ${note}` : ''}. Edit private note`} testID="chat-title">
-          <Text style={styles.headerName} numberOfLines={1}>{otherName || 'Loading'}</Text>
-          <Text style={note ? styles.headerNote : styles.headerSub} numberOfLines={1} testID="chat-note">{note || 'Add a private note'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="Chat options" testID="chat-options" style={styles.menuButton}>
-          <View style={styles.dots}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View>
-        </TouchableOpacity>
-      </View>
-      {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      {safetyNotice && <Text style={styles.notice}>Take your time before sharing contact details or moving to another app.</Text>}
-      <FlatList
-        ref={list}
-        data={messages}
-        onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
-        keyExtractor={(item) => item.messageId}
-        contentContainerStyle={styles.list}
-        renderItem={({ item, index }) => {
+  const renderMessage = useCallback(({ item, index }: { item: Message; index: number }) => {
           const mine = item.senderId === currentUserId;
           const newDay = index === 0 || new Date(messages[index - 1].sentAt).toDateString() !== new Date(item.sentAt).toDateString();
           const warning = !mine ? WARNINGS[item.moderationFlag] : undefined;
@@ -255,12 +175,124 @@ export default function ChatScreen() {
               )}
             </View>
           );
-        }}
+        }, [messages, currentUserId, otherName, byId, nameOf, focusInput]);
+
+  function leaveChat(outcome: EndOutcome = 'ended') {
+    if (navigatedAway.current) return;
+    navigatedAway.current = true;
+    navigation.replace('Ended', { outcome });
+  }
+
+  async function handleSend() {
+    const text = draft.trim();
+    if (!text || sendInFlight.current || safetyInFlight.current || navigatedAway.current || sending || ending || submitting || connection?.status !== 'active') return;
+    sendInFlight.current = true;
+    setSending(true);
+    setError(null);
+    try {
+      tap();
+      nearBottom.current = true;
+      const attempt = messageAttempts.current.forMessage(connectionId, text, replyingTo?.messageId);
+      const result = await sendMessage(attempt);
+      messageAttempts.current.delivered(attempt.clientMessageId);
+      setDraft((current) => current.trim() === text ? '' : current);
+      setReplyingTo(null);
+      if (result.earlyContactShare) setSafetyNotice(true);
+    } catch (err) {
+      setError(errorMessage(err, 'Your message was not sent. Try again.'));
+    } finally {
+      sendInFlight.current = false;
+      setSending(false);
+    }
+  }
+
+  async function handleEnd() {
+    if (safetyInFlight.current || navigatedAway.current || ending || submitting) return;
+    safetyInFlight.current = true;
+    setMenuVisible(false);
+    setEnding(true);
+    setError(null);
+    try {
+      await endConnection({ connectionId });
+      leaveChat();
+    } catch (err) {
+      setError(errorMessage(err, 'Could not end the connection. Try again.'));
+    } finally {
+      safetyInFlight.current = false;
+      setEnding(false);
+    }
+  }
+
+  async function handleBlock() {
+    if (safetyInFlight.current || navigatedAway.current || ending || submitting) return;
+    safetyInFlight.current = true;
+    setMenuVisible(false);
+    setEnding(true);
+    setError(null);
+    try {
+      await blockUser({ connectionId });
+      leaveChat('blocked');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not block this person. Try again.'));
+    } finally {
+      safetyInFlight.current = false;
+      setEnding(false);
+    }
+  }
+
+  async function handleReport(reason: string) {
+    if (safetyInFlight.current || navigatedAway.current || submitting || ending || !otherId) return;
+    safetyInFlight.current = true;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await fileReport({ connectionId, reportedId: otherId, reason });
+      setReportVisible(false);
+      leaveChat('reported');
+    } catch (err) {
+      setError(errorMessage(err, 'Your report was not saved. Try again.'));
+    } finally {
+      safetyInFlight.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Chats' }] })} accessibilityRole="button" accessibilityLabel="Back to chats" testID="chat-back" style={styles.back}>
+          <Icon name="back" size={26} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Avatar name={otherName} seed={connectionId} size={40} />
+        <TouchableOpacity style={styles.headerText} onPress={() => { setNoteDraft(note ?? ''); setNoteError(null); setNoteVisible(true); }} accessibilityRole="button" accessibilityLabel={`${otherName}${note ? `, ${note}` : ''}. Edit private note`} testID="chat-title">
+          <Text style={styles.headerName} numberOfLines={1}>{otherName || 'Loading'}</Text>
+          <Text style={note ? styles.headerNote : styles.headerSub} numberOfLines={1} testID="chat-note">{note || 'Your number stays private'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="Chat options" testID="chat-options" style={styles.menuButton}>
+          <View style={styles.dots}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View>
+        </TouchableOpacity>
+      </View>
+      {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+      {safetyNotice && <Text style={styles.notice}>Take your time before sharing contact details or moving to another app.</Text>}
+      <FlatList
+        ref={list}
+        data={messages}
+        onContentSizeChange={onMessageSize}
+        onScroll={(event) => { const e = event.nativeEvent; nearBottom.current = e.layoutMeasurement.height + e.contentOffset.y >= e.contentSize.height - 120; }}
+        scrollEventThrottle={32}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        initialNumToRender={16}
+        maxToRenderPerBatch={12}
+        windowSize={9}
+        keyExtractor={messageKey}
+        contentContainerStyle={styles.list}
+        renderItem={renderMessage}
         ListEmptyComponent={(
           <View style={styles.emptyWrap}>
             <Avatar name={otherName} seed={connectionId} size={72} />
             <Text style={styles.emptyName}>{otherName}</Text>
-            <Text style={styles.empty}>{'Say hello. Messages disappear 72 hours after they are sent.'}</Text>
+            <Text style={styles.empty}>{'Say hello. Messages are available here for up to 72 hours.'}</Text>
             <Text style={styles.emptyTip}>Tap the name at the top to add a private note only you can see.</Text>
           </View>
         )}
@@ -284,13 +316,13 @@ export default function ChatScreen() {
           } : undefined} editable={!ending && !submitting && connection?.status === 'active'} />
         <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message"
           style={[styles.sendButton, !draft.trim() && !sending && styles.sendButtonOff]}>
-          {sending ? <ActivityIndicator color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
+          {sending ? <ActivityIndicator accessibilityLabel="Sending message" color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
         </TouchableOpacity>
       </View>
 
-      <Modal transparent visible={noteVisible} animationType="fade" onRequestClose={() => setNoteVisible(false)}>
-        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.sheet, styles.noteSheet]}>
+      <Modal transparent visible={noteVisible} animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setNoteVisible(false)}>
+        <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0}>
+          <View style={[styles.sheet, styles.noteSheet, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
             <View style={styles.grabber} />
             <Text style={styles.noteTitle}>{`A note about ${otherName}`}</Text>
             <Text style={styles.noteHelp}>Only you can see this. It helps you tell people with the same name apart.</Text>
@@ -298,6 +330,8 @@ export default function ChatScreen() {
             {noteError && <Text accessibilityRole="alert" style={styles.noteError}>{noteError}</Text>}
             {/* Save is only offered when something changed. Remove only when a note exists. */}
             <TouchableOpacity style={[styles.sheetRow, (noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) && styles.sheetRowOff]} testID="note-save" disabled={savingNote || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)} onPress={async () => {
+              if (noteInFlight.current || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) return;
+              noteInFlight.current = true;
               // Wait for the save to finish so the note is never lost if the app closes straight away.
               setSavingNote(true);
               setNoteError(null);
@@ -307,10 +341,11 @@ export default function ChatScreen() {
               } catch (err) {
                 setNoteError(errorMessage(err, 'Could not save the note. Try again.'));
               } finally {
+                noteInFlight.current = false;
                 setSavingNote(false);
               }
             }}>
-              {savingNote ? <ActivityIndicator color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
+              {savingNote ? <ActivityIndicator accessibilityLabel="Saving private note" color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={() => setNoteVisible(false)}>
               <Text style={styles.sheetRowMuted}>Cancel</Text>
@@ -319,9 +354,9 @@ export default function ChatScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal transparent visible={!!actionFor} animationType="fade" onRequestClose={() => setActionFor(null)}>
+      <Modal transparent visible={!!actionFor} animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setActionFor(null)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setActionFor(null)}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
             <View style={styles.grabber} />
             <Text style={styles.sheetTitle} numberOfLines={2}>{actionFor?.content}</Text>
             <TouchableOpacity style={styles.sheetRow} testID="reply-action" onPress={() => { setReplyingTo(actionFor); setActionFor(null); focusInput(); }}>
@@ -339,9 +374,9 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Modal transparent visible={menuVisible} animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMenuVisible(false)}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
             <View style={styles.grabber} />
             <TouchableOpacity
               style={styles.sheetRow}
@@ -365,9 +400,9 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <Modal transparent visible={reportVisible} animationType="fade" onRequestClose={() => setReportVisible(false)}>
+      <Modal transparent visible={reportVisible} animationType={reducedMotion ? 'none' : 'slide'} onRequestClose={() => setReportVisible(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => !submitting && setReportVisible(false)}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(24, insets.bottom + 16) }]}>
             <View style={styles.grabber} />
             <Text style={styles.sheetTitle}>What went wrong?</Text>
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -389,61 +424,61 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   rowMine: { alignItems: 'flex-end' },
   rowTheirs: { alignItems: 'flex-start' },
-  warning: { fontSize: 12, color: colors.danger, maxWidth: 280, marginTop: 4, lineHeight: 17, backgroundColor: colors.dangerBg, padding: 10, borderRadius: 12, overflow: 'hidden' },
+  warning: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, maxWidth: 280, marginTop: 4, lineHeight: 17, backgroundColor: colors.dangerBg, padding: 10, borderRadius: 12, overflow: 'hidden' },
   container: { flex: 1, backgroundColor: colors.bg },
-  error: { fontSize: 13, color: colors.danger, paddingVertical: 8, paddingHorizontal: 16 },
-  notice: { fontSize: 13, color: colors.gold, backgroundColor: colors.accentBg, marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 12, overflow: 'hidden', lineHeight: 18 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  error: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger, paddingVertical: 8, paddingHorizontal: 16 },
+  notice: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.gold, backgroundColor: colors.accentBg, marginHorizontal: 16, marginTop: 8, padding: 12, borderRadius: 12, overflow: 'hidden', lineHeight: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   menuButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   dots: { flexDirection: 'row', gap: 3 },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textPrimary },
-  list: { paddingVertical: 16, paddingHorizontal: 16, gap: 6, flexGrow: 1 },
-  bubble: { maxWidth: '82%', paddingTop: 9, paddingBottom: 7, paddingHorizontal: 14, borderRadius: 20, marginBottom: 2 },
+  list: { paddingVertical: 24, paddingHorizontal: 20, gap: 8, flexGrow: 1 },
+  bubble: { maxWidth: '82%', paddingTop: 12, paddingBottom: 10, paddingHorizontal: 16, borderRadius: 24, marginBottom: 2 },
   bubbleTheirs: { backgroundColor: colors.surfaceRaised, alignSelf: 'flex-start', borderBottomLeftRadius: 6 },
   bubbleMine: { backgroundColor: colors.accentFill, alignSelf: 'flex-end', borderBottomRightRadius: 6 },
-  bubbleTextTheirs: { fontSize: 16, lineHeight: 22, color: colors.textPrimary },
-  bubbleTextMine: { fontSize: 16, lineHeight: 22, color: colors.onAccent },
-  time: { fontSize: 12, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 3 },
-  timeMine: { color: '#6B6B6B' },
+  bubbleTextTheirs: { fontFamily: 'Passway-Regular', fontSize: 16, lineHeight: 22, color: colors.textPrimary },
+  bubbleTextMine: { fontFamily: 'Passway-Regular', fontSize: 16, lineHeight: 22, color: colors.onAccent },
+  time: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textMuted, alignSelf: 'flex-end', marginTop: 3 },
+  timeMine: { color: '#5F492B' },
   quote: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
   quoteTheirs: { borderLeftColor: colors.gold, backgroundColor: 'rgba(255,255,255,0.06)' },
   quoteMine: { borderLeftColor: '#000000', backgroundColor: 'rgba(0,0,0,0.07)' },
-  quoteName: { fontSize: 13, fontWeight: '700', color: colors.gold },
-  quoteText: { fontSize: 14, color: colors.textSecondary, lineHeight: 19 },
-  quoteTextMine: { color: '#333333' },
+  quoteName: { fontFamily: 'Passway-Bold', fontSize: 14, color: colors.gold },
+  quoteText: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 19 },
+  quoteTextMine: { color: colors.onAccent },
   replyBar: { flexDirection: 'row', alignItems: 'center', gap: 10, borderLeftWidth: 3, borderLeftColor: colors.gold, backgroundColor: colors.surface, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, marginHorizontal: 12, marginTop: 6 },
   replyBarText: { flex: 1 },
-  replyClose: { fontSize: 16, color: colors.textSecondary, padding: 6 },
+  replyClose: { fontFamily: 'Passway-Regular', fontSize: 16, color: colors.textSecondary, padding: 6 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
-  emptyName: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, marginTop: 4 },
-  empty: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  emptyTip: { fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19, maxWidth: 260 },
-  headerName: { fontSize: 17, fontWeight: '700', color: colors.textPrimary },
-  headerNote: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
-  headerSub: { fontSize: 13, color: colors.gold, marginTop: 2 },
+  emptyName: { fontFamily: 'Passway-Bold', fontSize: 22, color: colors.textPrimary, marginTop: 4 },
+  empty: { fontFamily: 'Passway-Regular', fontSize: 15, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  emptyTip: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 19, maxWidth: 260 },
+  headerName: { fontFamily: 'Passway-Bold', fontSize: 17, color: colors.textPrimary },
+  headerNote: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textSecondary, marginTop: 2 },
+  headerSub: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.gold, marginTop: 2 },
   headerText: { flex: 1, minHeight: 44, justifyContent: 'center' },
   back: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  backGlyph: { fontSize: 30, color: colors.textPrimary, lineHeight: 32, marginTop: -3 },
+  backGlyph: { fontFamily: 'Passway-Regular', fontSize: 30, color: colors.textPrimary, lineHeight: 32, marginTop: -3 },
   noteSheet: { paddingHorizontal: 20, gap: 10 },
-  noteTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginTop: 4 },
-  noteError: { fontSize: 13, color: colors.danger },
-  noteHelp: { fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
-  noteInput: { borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.bg, borderRadius: 14, paddingHorizontal: 14, minHeight: 50, fontSize: 16, color: colors.textPrimary, marginVertical: 6 },
-  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 },
-  input: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.fieldBorder, borderRadius: 22, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 12, fontSize: 16, maxHeight: 140, color: colors.textPrimary },
-  sendButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
+  noteTitle: { fontFamily: 'Passway-Bold', fontSize: 20, color: colors.textPrimary, marginTop: 4 },
+  noteError: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.danger },
+  noteHelp: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
+  noteInput: { borderWidth: 1, borderColor: colors.fieldBorder, backgroundColor: colors.bg, borderRadius: 14, paddingHorizontal: 14, minHeight: 50, fontFamily: 'Passway-Regular', fontSize: 16, color: colors.textPrimary, marginVertical: 6 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 },
+  input: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.fieldBorder, borderRadius: 26, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, fontFamily: 'Passway-Regular', fontSize: 16, maxHeight: 140, color: colors.textPrimary },
+  sendButton: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center' },
   sendButtonOff: { backgroundColor: colors.surfaceRaised },
-  sendGlyph: { fontSize: 20, color: colors.onAccent, fontWeight: '700' },
+  sendGlyph: { fontFamily: 'Passway-Bold', fontSize: 20, color: colors.onAccent },
   sendGlyphOff: { color: colors.textMuted },
   backdrop: { flex: 1, backgroundColor: colors.backdrop, justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 8, paddingBottom: 28, paddingHorizontal: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, width: '100%', maxWidth: 480, alignSelf: 'center' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingTop: 8, paddingBottom: 28, paddingHorizontal: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, width: '100%', maxWidth: 480, alignSelf: 'center' },
   grabber: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 10 },
-  sheetTitle: { fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16, lineHeight: 18 },
+  sheetTitle: { fontFamily: 'Passway-Regular', fontSize: 14, color: colors.textMuted, textAlign: 'center', paddingVertical: 10, paddingHorizontal: 16, lineHeight: 18 },
   sheetRow: { paddingVertical: 16, alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  sheetRowText: { fontSize: 16, color: colors.textPrimary, fontWeight: '500' },
-  sheetRowDanger: { fontSize: 16, color: colors.danger, fontWeight: '600' },
-  sheetRowMuted: { fontSize: 16, color: colors.textSecondary },
+  sheetRowText: { fontFamily: 'Passway-Medium', fontSize: 16, color: colors.textPrimary },
+  sheetRowDanger: { fontFamily: 'Passway-SemiBold', fontSize: 16, color: colors.danger },
+  sheetRowMuted: { fontFamily: 'Passway-Regular', fontSize: 16, color: colors.textSecondary },
   sheetRowOff: { opacity: 0.4 },
   dayWrap: { alignSelf: 'stretch', alignItems: 'center', marginVertical: 10 },
-  day: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' },
+  day: { fontFamily: 'Passway-SemiBold', fontSize: 14, color: colors.textSecondary, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden' },
 });

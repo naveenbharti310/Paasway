@@ -27,14 +27,31 @@ if (process.env.EXPO_PUBLIC_DIAGNOSTICS === '1' && process.env.EAS_BUILD_PROFILE
   throw new Error('Diagnostics and fictional test login are restricted to the play-diagnostics build profile.');
 }
 
+const appCheckSetting = process.env.EXPO_PUBLIC_APP_CHECK;
+if (appCheckSetting && !['on', 'off'].includes(appCheckSetting)) {
+  throw new Error('App Check setting must be on or off.');
+}
+// Store-attestation builds must exercise the same verification policy as
+// production, not inherit the internal diagnostic APK's bypass or credentials.
+const verifiedRelease = ['production', 'play-attestation'].includes(process.env.EAS_BUILD_PROFILE ?? '');
+if (verifiedRelease && appCheckSetting === 'off') {
+  throw new Error('Production builds must not disable App Check. Use an internal testing profile instead.');
+}
+if (verifiedRelease && process.env.EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN) {
+  throw new Error('Release builds must not bundle an App Check debug token.');
+}
+if (verifiedRelease && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1') {
+  throw new Error('Release builds must not show fictional test numbers.');
+}
+
 const config: ExpoConfig = {
   name: 'Passway',
   slug: 'passway',
   ...(easOwner ? { owner: easOwner } : {}),
-  version: '0.2.0',
+  version: '0.3.4',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
-  backgroundColor: '#000000',
+  backgroundColor: '#0B0D11',
   icon: './assets/icon.png',
   web: { favicon: './assets/favicon.png' },
   ios: {
@@ -45,9 +62,17 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.passway.app',
+    versionCode: 10,
+    allowBackup: false,
+    blockedPermissions: [
+      'android.permission.SYSTEM_ALERT_WINDOW',
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+    ],
+    softwareKeyboardLayoutMode: 'resize',
     googleServicesFile: googleServicesJson,
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
-    adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#000000' },
+    adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#0B0D11' },
   },
   plugins: [
     '@react-native-firebase/app',
@@ -59,7 +84,8 @@ const config: ExpoConfig = {
     'expo-notifications',
     './plugins/withFirebaseNoSpm',
     './plugins/withTestLabDetection',
-    ['expo-splash-screen', { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 96 }],
+    './plugins/withAndroidDataProtection',
+    ['expo-splash-screen', { backgroundColor: '#0B0D11', image: './assets/splash-icon.png', imageWidth: 96 }],
     ['expo-system-ui'],
   ],
   extra: { eas: { projectId: easProjectId } },
