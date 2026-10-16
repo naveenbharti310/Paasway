@@ -175,3 +175,9 @@ test('late permission approval after a deadline cannot start GPS work', async ()
  await assert.rejects(h.getCurrentLocation(), e => e.code === 'functions/deadline-exceeded');
  resolve({ status: 'granted' });await new Promise(r => setImmediate(r));assert.equal(h.counts.positions, 0);
 });
+
+
+test("next store candidate has a new monotonic version and hardened attestation profile", () => {
+ const c=buildConfig({EAS_BUILD_PROFILE:"play-attestation",EXPO_PUBLIC_APP_CHECK:"on",EXPO_PUBLIC_OTP_PROVIDER:"2factor"}).default;
+ assert.equal(c.version,"0.3.1");assert.equal(c.android.versionCode,7);assert.equal(c.android.allowBackup,false);
+});
