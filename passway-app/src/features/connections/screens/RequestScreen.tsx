@@ -1,7 +1,9 @@
 import { connectionNow } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { doc, onSnapshot } from '@react-native-firebase/firestore';
+import { db } from '../../../firebase/client';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { respondToRequest } from '../api/connections';
 import { colors } from '../../../theme/colors';
@@ -16,6 +18,7 @@ export default function RequestScreen() {
   const { params } = useRoute<RequestRouteProp>();
   const { requestId, requesterName, requestedAt, tidCreatedAt, expiresAt, clock } = params;
   const [error, setError] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const [expired, setExpired] = useState(connectionNow(clock) >= expiresAt);
   useEffect(() => {
     const timer = setInterval(() => setExpired(connectionNow(clock) >= expiresAt), 1000);
@@ -23,10 +26,26 @@ export default function RequestScreen() {
   }, [expiresAt, clock]);
   const [loading, setLoading] = useState<'accept' | 'decline' | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    setUnavailable(false);
+    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
+      const request = snap.data();
+      if (!request && snap.metadata.fromCache) return;
+      if (!request || request.status === 'declined' || request.status === 'expired') setUnavailable(true);
+      // Accepted responses are handled by the explicit idempotent API call;
+      // metadata replays must not race it into a second navigation reset.
+    }, (err) => {
+      if (active) setError(errorMessage(err, 'Could not check this request. Try again.'));
+    });
+    return () => { active = false; unsubscribe(); };
+  }, [requestId]);
+
   const elapsedSeconds = Math.max(0, Math.round((requestedAt - tidCreatedAt) / 1000));
 
   async function handleRespond(accept: boolean) {
-    if (loading || (accept && expired)) return;
+    if (loading || (accept && (expired || unavailable))) return;
     setError(null);
     setLoading(accept ? 'accept' : 'decline');
     try {
@@ -46,7 +65,7 @@ export default function RequestScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title="Request" showBack={false} />
-      <View style={styles.center}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.center}>
         <View style={styles.ring}>
           <View style={styles.avatar}>
             <Text style={styles.avatarGlyph}>{requesterName.charAt(0).toUpperCase()}</Text>
@@ -56,20 +75,22 @@ export default function RequestScreen() {
         <Text style={styles.title}>wants to connect with you</Text>
         <Text style={styles.helper}>{`Requested ${elapsedSeconds}s after you shared the code`}</Text>
         {error && <Text style={styles.error}>{error}</Text>}
-        {expired && <Text style={styles.error}>This request has expired.</Text>}
-        {expired && <Button label="Start again" onPress={() => navigation.replace('Generate')} />}
+        {unavailable && <Text accessibilityRole="alert" style={styles.error}>This request is no longer available.</Text>}
+        {!unavailable && expired && <Text style={styles.error}>This request has expired.</Text>}
+        {(expired || unavailable) && <Button testID="request-start-again" label="Start again" onPress={() => navigation.replace('Generate')} />}
         <View style={styles.row}>
           <Button label="Decline" testID="decline" variant="secondary" onPress={() => handleRespond(false)} loading={loading === 'decline'} disabled={!!loading} style={styles.half} />
-          <Button label="Accept" testID="accept" onPress={() => handleRespond(true)} loading={loading === 'accept'} disabled={!!loading || expired} style={styles.half} />
+          <Button label="Accept" testID="accept" onPress={() => handleRespond(true)} loading={loading === 'accept'} disabled={!!loading || expired || unavailable} style={styles.half} />
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  scroll: { flex: 1 },
+  center: { flexGrow: 1, paddingVertical: 24, alignItems: 'center', justifyContent: 'center', gap: 10 },
   ring: { width: 128, height: 128, borderRadius: 40, borderWidth: 1, borderColor: colors.gold, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   avatar: { width: 104, height: 104, borderRadius: 34, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' },
   avatarGlyph: { fontFamily: 'Passway-Bold', fontSize: 38, color: colors.gold },

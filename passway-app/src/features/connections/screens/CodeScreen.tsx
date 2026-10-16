@@ -1,7 +1,7 @@
 import { remainingSeconds } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, where, limit, onSnapshot } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
@@ -88,7 +88,7 @@ export default function CodeScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title="Your code" showBack={false} />
-      <View style={styles.center}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.center}>
         <Text style={styles.helper}>Show this to the person you just met</Text>
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>ONE TIME CODE</Text>
@@ -100,7 +100,7 @@ export default function CodeScreen() {
         </View>
         <Text style={styles.waiting}>Waiting for them to enter it</Text>
         {error && <Text style={styles.error}>{error}</Text>}
-      </View>
+      </ScrollView>
       <View style={styles.bottom}>
         <Button label="Cancel code" testID="cancel-code" variant="secondary" onPress={handleCancel} loading={canceling} />
       </View>
@@ -110,7 +110,8 @@ export default function CodeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
+  scroll: { flex: 1 },
+  center: { flexGrow: 1, paddingVertical: 24, alignItems: 'center', justifyContent: 'center', gap: 20 },
   bottom: { paddingBottom: 16 },
   codeCard: { width: '100%', backgroundColor: colors.accentBg, borderRadius: 32, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: '#2A2418' },
   codeLabel: { fontFamily: 'Passway-SemiBold', fontSize: 14, color: colors.textMuted, marginBottom: 12, letterSpacing: 2 },
