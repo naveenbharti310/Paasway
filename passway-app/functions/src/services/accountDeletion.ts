@@ -34,6 +34,27 @@ export async function resumeAccountDeletion(uid: string): Promise<{ pending: boo
     });
     more ||= open.size === 25;
   }
+  // Account guards already prevent acceptance after deletion intent, but peers
+  // must not remain waiting on a request whose account has finished deleting.
+  // Bound both directions and re-read the request/code before any writes: a
+  // selection may be stale, and a four-character code may have been reallocated.
+  for (const field of ['generatorId', 'requesterId'] as const) {
+    const pending = await db.collection('connectionRequests').where(field, '==', uid).where('status', '==', 'pending').limit(25).get();
+    for (const doc of pending.docs) await db.runTransaction(async (tx) => {
+      const request = (await tx.get(doc.ref)).data();
+      if (request?.status !== 'pending' || (request.generatorId !== uid && request.requesterId !== uid)) return;
+      const tidRef = typeof request.tid === 'string' && /^[A-Z0-9]{4}$/.test(request.tid)
+        ? db.collection('tids').doc(request.tid) : undefined;
+      const code = tidRef ? (await tx.get(tidRef)).data() : undefined;
+      tx.update(doc.ref, { status: 'declined' });
+      if (tidRef && code?.status === 'pending' && code.requestId === doc.id &&
+        code.generatorId === request.generatorId && typeof request.tidCreatedAt === 'number' &&
+        Number.isFinite(request.tidCreatedAt) && code.createdAt === request.tidCreatedAt) {
+        tx.update(tidRef, { status: 'expired' });
+      }
+    });
+    more ||= pending.size === 25;
+  }
   // Parent retention is authoritative to transactional cleanup; do not fan out
   // through an unbounded number of child message pages inside account deletion.
   const codes = await db.collection('tids').where('generatorId', '==', uid).where('status', '==', 'active').limit(100).get();
@@ -54,7 +75,9 @@ export async function resumeAccountDeletion(uid: string): Promise<{ pending: boo
     const banned = job.previousStatus === 'banned' || current.data()?.status === 'banned';
     const reviewed = job.previousStatus === 'reported' || current.data()?.status === 'reported' || reported.docs.length > 0;
     if (hold?.status === 'banned' || (!banned && !reviewed)) return;
-    if (!banned && hold?.status === 'reported') return;
+    // Deletion must not replace a restrictive/unknown phone policy with the
+    // weaker review state. A permanent ban may still strengthen any hold.
+    if (!banned && hold) return;
     tx.set(heldRef, { status: banned ? 'banned' : 'reported', updatedAt: Date.now(), ...(!banned ? { deleteAt: new Date(Date.now() + REPORTED_HOLD_MS) } : {}) });
   });
   // Keep the deleting profile until this external operation succeeds. A crash

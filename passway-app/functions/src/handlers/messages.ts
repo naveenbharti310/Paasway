@@ -57,7 +57,12 @@ export const sendMessage = authedCallable(async (uid, data) => {
       const quoted = await tx.get(ref.collection('messages').doc(replyTo));
       const deleteAt = quoted.data()?.deleteAt as { toMillis?: () => number } | undefined;
       const quotedAt = quoted.data()?.sentAt;
-      if (!quoted.exists || typeof quotedAt !== 'number' || quotedAt <= Date.now() - MESSAGE_RETENTION_MS || (deleteAt?.toMillis && deleteAt.toMillis() <= Date.now())) {
+      const checkedAt = Date.now();
+      if (
+        !quoted.exists || typeof quotedAt !== 'number' || !Number.isFinite(quotedAt) ||
+        quotedAt > checkedAt || quotedAt <= checkedAt - MESSAGE_RETENTION_MS ||
+        (deleteAt?.toMillis && deleteAt.toMillis() <= checkedAt)
+      ) {
         throw new HttpsError('failed-precondition', 'The message you replied to is no longer available.');
       }
     }
@@ -93,7 +98,14 @@ export const getMessages = authedCallable(async (uid, data) => {
     const other = otherParticipant(connection as Participants, uid);
     await assertAccountActive(other, tx);
     await assertNotBlocked(tx, uid, other);
-    const rows = await tx.get(ref.collection('messages').where('sentAt', '>', Date.now() - MESSAGE_RETENTION_MS).orderBy('sentAt', 'desc').limit(data.latest ? 1 : 200));
+    // Apply both visibility bounds before the limit: discarding future rows
+    // afterwards could hide the genuine latest message or starve a whole page.
+    const readAt = Date.now();
+    const rows = await tx.get(ref.collection('messages')
+      .where('sentAt', '>', readAt - MESSAGE_RETENTION_MS)
+      .where('sentAt', '<=', readAt)
+      .orderBy('sentAt', 'desc')
+      .limit(data.latest ? 1 : 200));
     return rows.docs.map((row) => {
       const m = row.data();
       return { messageId: row.id, connectionId, senderId: m.senderId, content: m.content, sentAt: m.sentAt, moderationFlag: m.moderationFlag, ...(typeof m.replyTo === 'string' ? { replyTo: m.replyTo } : {}) };

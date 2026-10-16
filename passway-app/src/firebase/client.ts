@@ -3,6 +3,7 @@ import { getAuth } from '@react-native-firebase/auth';
 import { getFirestore } from '@react-native-firebase/firestore';
 import { getFunctions, httpsCallable, httpsCallableFromUrl } from '@react-native-firebase/functions';
 import { initializeAppCheck, ReactNativeFirebaseAppCheckProvider } from '@react-native-firebase/app-check';
+import { normalizeCallableError } from '../services/errors';
 
 // Must match FUNCTIONS_REGION in functions/src/constants.ts.
 export const FUNCTIONS_REGION = 'asia-south1';
@@ -36,5 +37,8 @@ export function callable<Request, Response>(name: string): (data: Request) => Pr
   const fn = apiUrl
     ? httpsCallableFromUrl<Request, Response>(functions, `${apiUrl}/api/${name}`)
     : httpsCallable<Request, Response>(functions, name);
-  return async (data) => (await fn(data)).data;
+  return async (data) => {
+    try { return (await fn(data)).data; }
+    catch (error) { throw normalizeCallableError(error); }
+  };
 }

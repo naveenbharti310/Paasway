@@ -1,10 +1,19 @@
 name: Architecture regression and security gates
-# Automatic validation is routed to Cynqra/passway-native-tests while this
-# personal account's Actions jobs are blocked before startup. Keep manual
-# execution available; do not confuse an unstarted job with a failed test.
-# Exact-source enterprise regression AND dependency-security statuses must be
-# inspected before merge. Dependency failures are never suppressed.
+# Source Actions startup is verified working by run38923294297 (Oct16).
+# PR/push gates are credential-free; central exact-source checks remain an
+# independent repeat, not a substitute for a failing source workflow.
 on:
+  pull_request:
+    paths:
+      - 'passway-app/**'
+      - '.github/workflows/architecture-checks.yml'
+      - '.github/tests/**'
+  push:
+    branches: [main]
+    paths:
+      - 'passway-app/**'
+      - '.github/workflows/architecture-checks.yml'
+      - '.github/tests/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -45,14 +54,20 @@ jobs:
           java-version: '21'
       - run: npm ci
       - run: npm ci --prefix functions
+      - name: Verify dependency-gate policy cannot drift
+        run: node --test ../.github/tests/dependency-gate.test.cjs
       - run: npm run test:mobile
       - run: npm run typecheck && npm run typecheck --prefix functions
       - run: npm test --prefix functions
       - run: npm run test:emulator
       - run: npx --no-install expo export --platform all --output-dir dist-ci
+      - name: Exercise controlled build-only web preview helper
+        env:
+          EXPO_PUBLIC_API_URL: http://127.0.0.1:8787
+        run: npm run preview:web
   dependency-security:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: passway-app
@@ -65,7 +80,20 @@ jobs:
           node-version: '22'
       - name: Backend production dependency audit
         run: npm audit --package-lock-only --omit=dev --prefix functions --audit-level=high
-      # Deliberately blocking while upstream build-tool advisories remain open.
-      # Do not hide this with continue-on-error or downgrade Expo across majors.
-      - name: Mobile and build-tool dependency audit
-        run: npm audit --package-lock-only --audit-level=high
+      - name: Install exact dependencies and hash-bound reviewed build-tool fixes
+        run: npm ci
+      # Raw registry audit is NOT clean. Match the central validation policy:
+      # verify installed hashes/exploits and exact reviewed advisory payloads.
+      # A new/changed/unreviewed high finding or absent remedy still blocks.
+      - name: Verify installed remediation and retain raw registry audit
+        run: npm run security:audit
+      - name: Run pinned upstream conformance against installed remedies
+        run: npm run security:conformance
+      - name: Preserve raw audit and installed-code evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dependency-remediation-proof-with-raw-audit
+          path: passway-app/security-results
+          if-no-files-found: error
+          retention-days: 3

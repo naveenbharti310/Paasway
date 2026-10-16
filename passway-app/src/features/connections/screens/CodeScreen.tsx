@@ -1,6 +1,7 @@
+import { remainingSeconds } from '../clock';
 import { errorMessage } from '../../../services/errors';
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, where, limit, onSnapshot } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
@@ -15,14 +16,15 @@ type CodeRouteProp = RouteProp<RootStackParamList, 'Code'>;
 export default function CodeScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const { params } = useRoute<CodeRouteProp>();
-  const { tid, createdAt, expiresAt } = params;
-  const [secondsLeft, setSecondsLeft] = useState(Math.max(0, Math.round((expiresAt - Date.now()) / 1000)));
+  const { tid, createdAt, expiresAt, clock } = params;
+  const [secondsLeft, setSecondsLeft] = useState(remainingSeconds(expiresAt, clock));
+  const cancelInFlight = useRef(false);
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
+      const left = remainingSeconds(expiresAt, clock);
       setSecondsLeft(left);
       if (left === 0) {
         clearInterval(interval);
@@ -30,7 +32,7 @@ export default function CodeScreen() {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [expiresAt, navigation]);
+  }, [expiresAt, clock, navigation]);
 
   useEffect(() => {
     const q = query(
@@ -51,11 +53,12 @@ export default function CodeScreen() {
           requestedAt: data.createdAt,
           tidCreatedAt: data.tidCreatedAt,
           expiresAt: data.expiresAt,
+          clock,
         });
       }
     }, (err) => setError(errorMessage(err, 'Could not listen for a connection request.')));
     return unsubscribe;
-  }, [tid, createdAt, navigation]);
+  }, [tid, createdAt, clock, navigation]);
 
   // Going back with the system back button or gesture cancels the code, so it
   // is never left active where nobody is watching for a request.
@@ -66,7 +69,8 @@ export default function CodeScreen() {
   }), [navigation]);
 
   async function handleCancel() {
-    if (canceling) return;
+    if (cancelInFlight.current || canceling) return;
+    cancelInFlight.current = true;
     setCanceling(true);
     setError(null);
     try {
@@ -75,6 +79,7 @@ export default function CodeScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not cancel the code. Try again.'));
     } finally {
+      cancelInFlight.current = false;
       setCanceling(false);
     }
   }
@@ -86,11 +91,11 @@ export default function CodeScreen() {
   return (
     <View style={styles.container}>
       <ScreenHeader title="Your code" showBack={false} />
-      <View style={styles.center}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.center}>
         <Text style={styles.helper}>Show this to the person you just met</Text>
         <View style={styles.codeCard}>
           <Text style={styles.codeLabel}>ONE TIME CODE</Text>
-          <Text style={styles.codeText} testID="code-text" selectable={false} maxFontSizeMultiplier={1} accessibilityLabel={`Your code is ${tid.split('').join(' ')}`}>{tid}</Text>
+          <Text style={styles.codeText} testID="code-text" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} selectable={false} maxFontSizeMultiplier={1} accessibilityLabel={`Your code is ${tid.split('').join(' ')}`}>{tid}</Text>
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${Math.max(0, Math.min(1, secondsLeft / Math.max(1, (expiresAt - createdAt) / 1000))) * 100}%` }, urgent && styles.fillUrgent]} />
           </View>
@@ -98,7 +103,7 @@ export default function CodeScreen() {
         </View>
         <Text style={styles.waiting}>Waiting for them to enter it</Text>
         {error && <Text style={styles.error}>{error}</Text>}
-      </View>
+      </ScrollView>
       <View style={styles.bottom}>
         <Button label="Cancel code" testID="cancel-code" variant="secondary" onPress={handleCancel} loading={canceling} />
       </View>
@@ -108,11 +113,12 @@ export default function CodeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 24, paddingTop: 16 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
+  scroll: { flex: 1 },
+  center: { flexGrow: 1, paddingVertical: 24, alignItems: 'center', justifyContent: 'center', gap: 20 },
   bottom: { paddingBottom: 16 },
   codeCard: { width: '100%', backgroundColor: colors.accentBg, borderRadius: 32, paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: '#2A2418' },
   codeLabel: { fontFamily: 'Passway-SemiBold', fontSize: 14, color: colors.textMuted, marginBottom: 12, letterSpacing: 2 },
-  codeText: { fontFamily: 'Passway-Bold', fontSize: 52, letterSpacing: 10, color: colors.gold, paddingLeft: 10 },
+  codeText: { width: '100%', textAlign: 'center', fontFamily: 'Passway-Bold', fontSize: 52, letterSpacing: 10, color: colors.gold, paddingLeft: 10 },
   track: { width: '100%', height: 6, borderRadius: 3, backgroundColor: colors.border, marginTop: 24, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3, backgroundColor: colors.gold },
   fillUrgent: { backgroundColor: colors.danger },

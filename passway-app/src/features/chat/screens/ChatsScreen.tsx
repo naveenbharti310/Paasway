@@ -43,7 +43,7 @@ export default function ChatsScreen() {
         />
       </View>
       {error && <Text accessibilityRole="alert" style={styles.empty}>Some chats could not load. Check your connection and reopen this screen.</Text>}
-      {loading ? <ActivityIndicator style={styles.loading} color={colors.gold} /> : (
+      {loading ? <ActivityIndicator accessibilityLabel="Loading chats" style={styles.loading} color={colors.gold} /> : (
         <FlatList
           data={chats}
           keyExtractor={(item) => item.connectionId}

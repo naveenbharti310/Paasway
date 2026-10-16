@@ -10,15 +10,18 @@
     "typecheck": "tsc --noEmit",
     "test:rules": "node --test test/firestore.rules.test.cjs",
     "test:rules:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules\"",
-    "test:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore --project demo-passway \"npm run test:rules && npm run test:integration --prefix functions\"",
-    "check": "npm run test:mobile && npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist",
+    "test:emulator": "npx --yes firebase-tools@15.32.1 emulators:exec --only auth,firestore --project demo-passway \"npm run test:rules && npm run test:integration --prefix functions && npm run test:auth:integration --prefix functions\"",
+    "check": "npm run security:audit && npm run test:mobile && npm run typecheck && npm run typecheck --prefix functions && npm test --prefix functions && npm run test:emulator && expo export --platform all --output-dir dist",
     "preview:web": "sh scripts/web-preview.sh",
     "icons": "node scripts/make-icons.cjs",
-    "postinstall": "node scripts/materialize-design-assets.cjs",
+    "postinstall": "node scripts/apply-security-fixes.cjs && node scripts/materialize-design-assets.cjs",
     "test:push-registration": "node --test test/push-registration.test.cjs",
     "test:startup-recovery": "node --test test/startup-recovery.test.cjs",
     "test:reliability": "node --test test/reliability.test.cjs",
-    "test:mobile": "node --test test/push-registration.test.cjs test/startup-recovery.test.cjs test/reliability.test.cjs test/chat-privacy.test.cjs test/account-deletion.test.cjs"
+    "test:mobile": "node --test test/connection-snapshots.test.cjs test/push-registration.test.cjs test/startup-recovery.test.cjs test/reliability.test.cjs test/chat-privacy.test.cjs test/account-deletion.test.cjs test/deployed-app-check.test.cjs test/android-data-protection.test.cjs test/connection-clock.test.cjs test/preview-config.test.cjs test/pairing-actions.test.cjs test/action-races.test.cjs",
+    "test:dependency-security": "node --test test/dependency-security.test.cjs test/security-remediation.test.cjs",
+    "security:audit": "node scripts/security-audit.cjs",
+    "security:conformance": "bash scripts/security-conformance.sh"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

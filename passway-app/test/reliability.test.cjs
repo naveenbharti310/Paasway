@@ -17,16 +17,22 @@ test('user-facing billing errors do not disclose diagnostic credentials',()=>{co
 
 test('native location acquisition cannot hold the connection form indefinitely',async()=>{
  let requestedMs;
- const {getCurrentLocation}=load('services/location.ts',{'expo-location':{requestForegroundPermissionsAsync:async()=>({status:'granted'}),Accuracy:{Balanced:3},getCurrentPositionAsync:()=>new Promise(()=>{})},'./withDeadline':{withDeadline:(work,ms)=>{requestedMs=ms;return withDeadline(work,10)}}});
+ const {getCurrentLocation}=load('services/location.ts',{'expo-location':{getForegroundPermissionsAsync:async()=>({status:'granted'}),requestForegroundPermissionsAsync:async()=>({status:'granted'}),Accuracy:{Balanced:3},getCurrentPositionAsync:()=>new Promise(()=>{})},'./withDeadline':{withDeadline:(work,ms)=>{requestedMs=ms;return withDeadline(work,10)}}});
  await assert.rejects(getCurrentLocation(),e=>e.code==='functions/deadline-exceeded');assert.equal(requestedMs,15000);
 });
 test('denied location permission never requests a position',async()=>{
- let calls=0;const {getCurrentLocation}=load('services/location.ts',{'expo-location':{requestForegroundPermissionsAsync:async()=>({status:'denied'}),Accuracy:{Balanced:3},getCurrentPositionAsync:async()=>{calls++}},'./withDeadline':{withDeadline}});
+ let calls=0;const {getCurrentLocation}=load('services/location.ts',{'expo-location':{getForegroundPermissionsAsync:async()=>({status:'denied',canAskAgain:true}),requestForegroundPermissionsAsync:async()=>({status:'denied'}),Accuracy:{Balanced:3},getCurrentPositionAsync:async()=>{calls++}},'./withDeadline':{withDeadline}});
  await assert.rejects(getCurrentLocation(),/Location access/);assert.equal(calls,0);
 });
 
 
 function buildConfig(env){return load('../app.config.ts',{fs:{existsSync:()=>true},child_process:{execSync(){throw Error('unexpected build execution')}}},{process:{env}});}
+test('Android release configuration disables backup and unnecessary overlay/storage access',()=>{
+ const config=buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK:'on'}).default;
+ assert.equal(config.android.allowBackup,false);
+ for(const permission of ['android.permission.SYSTEM_ALERT_WINDOW','android.permission.READ_EXTERNAL_STORAGE','android.permission.WRITE_EXTERNAL_STORAGE'])assert.ok(config.android.blockedPermissions.includes(permission));
+ assert.ok(config.plugins.includes('./plugins/withAndroidDataProtection'));
+});
 test('production build refuses an inherited App Check bypass',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_APP_CHECK:'off'}),/must not disable App Check/);});
 test('production defaults keep App Check on',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_OTP_PROVIDER:'2factor'}).default.name,'Passway');});
 test('diagnostic bypass stays restricted to the explicit internal profile',()=>{assert.throws(()=>buildConfig({EAS_BUILD_PROFILE:'production',EXPO_PUBLIC_DIAGNOSTICS:'1'}),/restricted/);assert.equal(buildConfig({EAS_BUILD_PROFILE:'play-diagnostics',EXPO_PUBLIC_DIAGNOSTICS:'1',EXPO_PUBLIC_APP_CHECK:'off'}).default.name,'Passway');});
@@ -47,3 +53,151 @@ test('store release profiles reject visible fictional-number helpers',()=>{for(c
 test('dedicated store-attestation profile is independent of diagnostic bypass profiles',()=>{const eas=JSON.parse(fs.readFileSync(path.join(__dirname,'../eas.json'),'utf8'));const p=eas.build['play-attestation'];assert.ok(p);assert.equal(p.extends,'production');assert.equal(p.distribution,'store');assert.equal(p.android.buildType,'app-bundle');assert.equal(p.env.EXPO_PUBLIC_APP_CHECK,'on');assert.equal(p.env.EXPO_PUBLIC_DIAGNOSTICS,'0');assert.equal(eas.submit['play-attestation'].android.track,'internal');assert.equal(eas.submit['play-attestation'].android.releaseStatus,'draft');});
 test('attestation configuration is valid with verification enabled',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'play-attestation',EXPO_PUBLIC_APP_CHECK:'on',EXPO_PUBLIC_DIAGNOSTICS:'0',EXPO_PUBLIC_SHOW_TEST_NUMBERS:'0'}).default.name,'Passway');});
 test('internal development builds may use registered debug credentials',()=>{assert.equal(buildConfig({EAS_BUILD_PROFILE:'development',EXPO_PUBLIC_APP_CHECK:'on',EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN:'synthetic-debug-token'}).default.name,'Passway');});
+
+// RNFirebase 26 callable errors are unprefixed; the web SDK remains prefixed.
+const errorBoundary = load('services/errors.ts', {}, { Error });
+for (const code of ['not-found', 'failed-precondition', 'invalid-argument', 'permission-denied', 'unauthenticated', 'resource-exhausted', 'unavailable', 'deadline-exceeded', 'internal', 'unknown']) {
+ test(`native callable ${code} is namespaced at the callable boundary`, () => {
+  const source = Object.assign(new Error('Server-written domain explanation'), { code });
+  const normalized = errorBoundary.normalizeCallableError(source);
+  assert.equal(normalized.code, `functions/${code}`);
+  assert.equal(normalized.message, source.message);
+  assert.equal(source.code, code); // Never mutate a shared SDK exception.
+  if (code === 'not-found') assert.equal(errorBoundary.errorMessage(normalized, 'fallback'), source.message);
+  if (code === 'internal' || code === 'unknown') assert.equal(errorBoundary.errorMessage(normalized, 'fallback'), 'fallback');
+ });
+}
+test('callable normalization preserves already-namespaced and unrelated errors', () => {
+ for (const code of ['functions/not-found', 'auth/invalid-verification-code', 'firestore/permission-denied', 'unexpected-provider-code']) {
+  const error = Object.assign(new Error('technical details'), { code });
+  assert.equal(errorBoundary.normalizeCallableError(error), error);
+ }
+ for (const error of [null, 'failure', new Error('offline'), { code: 'not-found', message: 'not a real SDK Error' }]) assert.equal(errorBoundary.normalizeCallableError(error), error);
+});
+test('callable entrypoint normalizes native failures while retaining successful data', async () => {
+ const injected = Object.assign(new Error('That code is not active. Ask them to generate a new one.'), { code: 'not-found' });
+ const mocks = {
+  '@react-native-firebase/app': { getApp: () => ({}) },
+  '@react-native-firebase/auth': { getAuth: () => ({}) },
+  '@react-native-firebase/firestore': { getFirestore: () => ({}) },
+  '@react-native-firebase/functions': { getFunctions: () => ({}), httpsCallable: () => async () => ({ data: { ok: true } }), httpsCallableFromUrl: () => async () => { throw injected; } },
+  '@react-native-firebase/app-check': {},
+  '../services/errors': errorBoundary,
+ };
+ const env = { EXPO_PUBLIC_APP_CHECK: 'off', EXPO_PUBLIC_API_URL: 'https://api.test' };
+ const external = load('firebase/client.ts', mocks, { Error, process: { env } });
+ await assert.rejects(external.callable('redeemTid')({}), error => error.code === 'functions/not-found' && errorBoundary.errorMessage(error, 'fallback') === injected.message);
+ const direct = load('firebase/client.ts', mocks, { Error, process: { env: { EXPO_PUBLIC_APP_CHECK: 'off' } } });
+ assert.equal((await direct.callable('ok')({})).ok, true);
+});
+
+test('every application loading indicator has an explicit accessible name', () => {
+ const root = path.join(__dirname, '../src');
+ function inspect(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+   const file = path.join(dir, entry.name);
+   if (entry.isDirectory()) { inspect(file); continue; }
+   if (!file.endsWith('.tsx')) continue;
+   const tree = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+   function visit(node) {
+    if ((ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) && node.tagName.getText(tree) === 'ActivityIndicator') {
+     const label = node.attributes.properties.find(p => ts.isJsxAttribute(p) && p.name.getText(tree) === 'accessibilityLabel');
+     assert.ok(label?.initializer && label.initializer.getText(tree).length > 2, `${path.relative(root, file)}: unnamed progress indicator`);
+    }
+    ts.forEachChild(node, visit);
+   }
+   visit(tree);
+  }
+ }
+ inspect(root);
+});
+
+test('actual Chats loading markup exposes its progressbar name in React Native Web', () => {
+ const React = require('react'), { renderToStaticMarkup } = require('react-dom/server');
+ const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/features/chat/screens/ChatsScreen.tsx'), 'utf8'), {
+  fileName: 'ChatsScreen.tsx', compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+ }).outputText;
+ const empty = () => null;
+ const mocks = {
+  '@react-navigation/native': { useNavigation: () => ({ canGoBack: () => false }) },
+  '../../../firebase/client': { auth: { currentUser: { uid: 'fictional-accessibility-fixture' } } },
+  '../../../theme/colors': { colors: {} },
+  '../../../components/ScreenHeader': empty, '../../../components/Button': empty,
+  '../../../components/Avatar': empty, '../../../components/HeroIllustration': empty, '../../../components/BottomNav': empty,
+  '../api/chats': { useActiveChats: () => ({ chats: [], loading: true, error: false }), useNotes: () => ({}), useLastMessage: () => null },
+  '../identity': { otherPerson: () => ({}) },
+ };
+ const m = { exports: {} };
+ vm.runInNewContext(code, { module: m, exports: m.exports, require: name => {
+  if (name in mocks) return mocks[name];
+  if (name === 'react-native') return require('react-native-web');
+  if (name === 'react/jsx-runtime') return require(name);
+  throw Error('Unexpected rendering dependency ' + name);
+ }});
+ const markup = renderToStaticMarkup(React.createElement(m.exports.default));
+ assert.match(markup, /<div(?=[^>]*role="progressbar")(?=[^>]*aria-label="Loading chats")[^>]*>/);
+});
+
+function locationHarness({ permission = { status: 'granted', canAskAgain: true }, requested = { status: 'granted', canAskAgain: true }, check, request, locate } = {}) {
+ const counts = { checks: 0, requests: 0, positions: 0 };
+ const api = load('services/location.ts', { 'expo-location': {
+  getForegroundPermissionsAsync: async () => { counts.checks++; return check ? check() : permission; },
+  requestForegroundPermissionsAsync: async () => { counts.requests++; return request ? request() : requested; },
+  getCurrentPositionAsync: async () => { counts.positions++; return locate ? locate() : { coords: { latitude: 28.6, longitude: 77.2 } }; },
+  Accuracy: { Balanced: 3 },
+ }, './withDeadline': { withDeadline: work => withDeadline(work, 20) } });
+ return { ...api, counts };
+}
+test('already granted location never relaunches runtime permission activities', async () => {
+ const h = locationHarness();await h.getCurrentLocation();await h.getCurrentLocation();
+ assert.deepEqual(h.counts, { checks: 2, requests: 0, positions: 2 }); // Fresh position and permission state each time.
+});
+test('revoked location is rechecked instead of using cached granted state', async () => {
+ let calls = 0;const h = locationHarness({ check: () => ++calls === 1 ? { status: 'granted' } : { status: 'denied', canAskAgain: false } });
+ await h.getCurrentLocation();await assert.rejects(h.getCurrentLocation(), /Location access/);
+ assert.equal(h.counts.positions, 1);assert.equal(h.counts.requests, 0);
+});
+test('a denied but askable location permission is requested once before positioning', async () => {
+ const h = locationHarness({ permission: { status: 'denied', canAskAgain: true } });
+ await h.getCurrentLocation();assert.deepEqual(h.counts, { checks: 1, requests: 1, positions: 1 });
+});
+test('permanently denied location never launches another permission request', async () => {
+ const h = locationHarness({ permission: { status: 'denied', canAskAgain: false } });
+ await assert.rejects(h.getCurrentLocation(), /Location access/);assert.equal(h.counts.requests, 0);assert.equal(h.counts.positions, 0);
+});
+test('concurrent location intents share one pending permission prompt', async () => {
+ let resolve;const pending = new Promise(r => resolve = r);const h = locationHarness({ permission: { status: 'denied', canAskAgain: true }, request: () => pending });
+ const a = h.getCurrentLocation(), b = h.getCurrentLocation();await new Promise(r => setImmediate(r));
+ resolve({ status: 'granted' });await Promise.all([a,b]);assert.equal(h.counts.requests, 1);assert.equal(h.counts.positions, 2);
+});
+test('late permission approval after a deadline cannot start GPS work', async () => {
+ let resolve;const pending = new Promise(r => resolve = r);const h = locationHarness({ permission: { status: 'denied', canAskAgain: true }, request: () => pending });
+ await assert.rejects(h.getCurrentLocation(), e => e.code === 'functions/deadline-exceeded');
+ resolve({ status: 'granted' });await new Promise(r => setImmediate(r));assert.equal(h.counts.positions, 0);
+});
+
+
+test("next store candidate has a new monotonic version and hardened attestation profile", () => {
+ const c=buildConfig({EAS_BUILD_PROFILE:"play-attestation",EXPO_PUBLIC_APP_CHECK:"on",EXPO_PUBLIC_OTP_PROVIDER:"2factor"}).default;
+ // Published internal baseline is 0.3.3 / 9. Future candidates must be
+ // newer, not permanently equal to a single version frozen into a test.
+ assert.match(c.version,/^\d+\.\d+\.\d+$/);
+ const version=c.version.split('.').map(Number), published=[0,3,3];
+ const firstChanged=version.findIndex((n,i)=>n!==published[i]);
+ assert.ok(firstChanged>=0 && version[firstChanged]>published[firstChanged], 'Candidate semantic version must exceed published 0.3.3');
+ assert.ok(Number.isSafeInteger(c.android.versionCode) && c.android.versionCode>9, 'Candidate code must exceed published internal version 9');
+ assert.equal(c.android.allowBackup,false);
+});
+
+test('onboarding distinguishes chat availability from eventual deletion and safety retention',()=>{
+ const copy=fs.readFileSync(path.join(__dirname,'../src/features/onboarding/screens/WelcomeScreen.tsx'),'utf8');
+ assert.ok(/available in chats for up to 72 hours/.test(copy),'Disclose the maximum chat availability window');
+ assert.ok(/Deletion runs afterward/.test(copy),'Distinguish physical deletion from chat expiry');
+ assert.ok(/Reported content may be retained longer for safety/.test(copy),'Disclose the safety retention exception');
+ assert.ok(!/Messages are deleted 72 hours|Nothing stays forever/.test(copy),'Do not promise an unsupported exact deletion time');
+});
+test('empty-chat disclosure describes availability rather than promising exact deletion',()=>{
+ const copy=fs.readFileSync(path.join(__dirname,'../src/features/chat/screens/ChatScreen.tsx'),'utf8');
+ assert.ok(/Messages are available here for up to 72 hours/.test(copy),'Describe chat availability accurately');
+ assert.ok(!/Messages are deleted 72 hours/.test(copy),'Do not promise exact physical deletion');
+});

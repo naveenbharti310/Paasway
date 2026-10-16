@@ -132,7 +132,7 @@ export default function RootNavigator() {
   if (checkingAuth) {
     return (
       <View testID="startup-loading" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.accentFill} />
+        <ActivityIndicator accessibilityLabel="Loading Passway" color={colors.accentFill} />
       </View>
     );
   }

@@ -71,6 +71,9 @@ export default function ChatScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const sendInFlight = useRef(false);
+  const safetyInFlight = useRef(false);
+  const noteInFlight = useRef(false);
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,15 +98,22 @@ export default function ChatScreen() {
   const currentUserId = auth.currentUser?.uid ?? '';
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), (snap) => {
+    let active = true;
+    navigatedAway.current = false;
+    setConnection(null);
+    const unsubscribe = onSnapshot(doc(db, 'connections', connectionId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
       const data = (snap.data() as Connection) ?? null;
+      // A just-accepted connection may not exist in this device's local cache.
+      // Only an authoritative missing result can mean it has been removed.
+      if (!data && snap.metadata.fromCache) { setConnection(null); return; }
       setConnection(data);
       if ((!data || data.status === 'ended') && !navigatedAway.current) {
         navigatedAway.current = true;
         navigation.replace('Ended', { outcome: outcomeFor(data, currentUserId) });
       }
-    }, (err) => setError(errorMessage(err, 'Could not load this connection.')));
-    return unsubscribe;
+    }, (err) => { if (active) setError(errorMessage(err, 'Could not load this connection.')); });
+    return () => { active = false; unsubscribe(); };
   }, [connectionId, navigation, currentUserId]);
 
   useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); }, [messageLoadError]);
@@ -175,11 +185,12 @@ export default function ChatScreen() {
 
   async function handleSend() {
     const text = draft.trim();
-    if (!text || sending || ending || submitting || connection?.status !== 'active') return;
-    tap();
+    if (!text || sendInFlight.current || safetyInFlight.current || navigatedAway.current || sending || ending || submitting || connection?.status !== 'active') return;
+    sendInFlight.current = true;
     setSending(true);
     setError(null);
     try {
+      tap();
       nearBottom.current = true;
       const attempt = messageAttempts.current.forMessage(connectionId, text, replyingTo?.messageId);
       const result = await sendMessage(attempt);
@@ -190,12 +201,14 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Your message was not sent. Try again.'));
     } finally {
+      sendInFlight.current = false;
       setSending(false);
     }
   }
 
   async function handleEnd() {
-    if (ending || submitting) return;
+    if (safetyInFlight.current || navigatedAway.current || ending || submitting) return;
+    safetyInFlight.current = true;
     setMenuVisible(false);
     setEnding(true);
     setError(null);
@@ -205,12 +218,14 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not end the connection. Try again.'));
     } finally {
+      safetyInFlight.current = false;
       setEnding(false);
     }
   }
 
   async function handleBlock() {
-    if (ending || submitting) return;
+    if (safetyInFlight.current || navigatedAway.current || ending || submitting) return;
+    safetyInFlight.current = true;
     setMenuVisible(false);
     setEnding(true);
     setError(null);
@@ -220,12 +235,14 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not block this person. Try again.'));
     } finally {
+      safetyInFlight.current = false;
       setEnding(false);
     }
   }
 
   async function handleReport(reason: string) {
-    if (submitting || ending || !otherId) return;
+    if (safetyInFlight.current || navigatedAway.current || submitting || ending || !otherId) return;
+    safetyInFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -235,6 +252,7 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Your report was not saved. Try again.'));
     } finally {
+      safetyInFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -274,7 +292,7 @@ export default function ChatScreen() {
           <View style={styles.emptyWrap}>
             <Avatar name={otherName} seed={connectionId} size={72} />
             <Text style={styles.emptyName}>{otherName}</Text>
-            <Text style={styles.empty}>{'Say hello. Messages disappear 72 hours after they are sent.'}</Text>
+            <Text style={styles.empty}>{'Say hello. Messages are available here for up to 72 hours.'}</Text>
             <Text style={styles.emptyTip}>Tap the name at the top to add a private note only you can see.</Text>
           </View>
         )}
@@ -298,7 +316,7 @@ export default function ChatScreen() {
           } : undefined} editable={!ending && !submitting && connection?.status === 'active'} />
         <TouchableOpacity onPress={handleSend} disabled={sending || ending || submitting || !draft.trim() || connection?.status !== 'active'} accessibilityLabel="Send message" testID="send-message"
           style={[styles.sendButton, !draft.trim() && !sending && styles.sendButtonOff]}>
-          {sending ? <ActivityIndicator color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
+          {sending ? <ActivityIndicator accessibilityLabel="Sending message" color={colors.onAccent} size="small" /> : <Icon name="send" size={22} strokeWidth={2.25} color={!draft.trim() ? colors.textMuted : colors.onAccent} />}
         </TouchableOpacity>
       </View>
 
@@ -312,6 +330,8 @@ export default function ChatScreen() {
             {noteError && <Text accessibilityRole="alert" style={styles.noteError}>{noteError}</Text>}
             {/* Save is only offered when something changed. Remove only when a note exists. */}
             <TouchableOpacity style={[styles.sheetRow, (noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) && styles.sheetRowOff]} testID="note-save" disabled={savingNote || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)} onPress={async () => {
+              if (noteInFlight.current || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) return;
+              noteInFlight.current = true;
               // Wait for the save to finish so the note is never lost if the app closes straight away.
               setSavingNote(true);
               setNoteError(null);
@@ -321,10 +341,11 @@ export default function ChatScreen() {
               } catch (err) {
                 setNoteError(errorMessage(err, 'Could not save the note. Try again.'));
               } finally {
+                noteInFlight.current = false;
                 setSavingNote(false);
               }
             }}>
-              {savingNote ? <ActivityIndicator color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
+              {savingNote ? <ActivityIndicator accessibilityLabel="Saving private note" color={colors.textPrimary} /> : <Text style={styles.sheetRowText}>{!noteDraft.trim() && note ? 'Remove note' : 'Save note'}</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={styles.sheetRow} onPress={() => setNoteVisible(false)}>
               <Text style={styles.sheetRowMuted}>Cancel</Text>

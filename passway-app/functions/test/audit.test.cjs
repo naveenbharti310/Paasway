@@ -199,6 +199,55 @@ const callWithPhone = (handler, data, user, phone = '+919876543210') => handler.
 const adultBirth = '1990-05-01';
 const childBirth = `${new Date().getUTCFullYear() - 15}-01-01`;
 
+test('a review hold cannot prevent persisting a new under-minimum phone restriction', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed(`accountHolds/${hash}`, { status: 'reported', deleteAt: new Date(Date.now() + 86400000) });
+  db.seed('users/carol', { status: 'reported' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: childBirth }, 'carol'), { confirmed: false });
+  assert.equal(db.read(`accountHolds/${hash}`).status, 'under_minimum');
+  db.seed('users/recreated', { status: 'active' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'recreated'), { confirmed: false });
+});
+
+for (const status of ['under_minimum', 'suspended', 'banned']) {
+  test(`reporting preserves an existing restrictive ${status} phone hold exactly`, async () => {
+    connection();
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, phoneHash: 'held-bob' });
+    db.seed('accountHolds/held-bob', hold);
+    const result = await call(fileReport, { connectionId: 'chat1', reportedId: 'bob', reason: 'Unsafe' });
+    assert.ok(db.read(`reports/${result.reportId}`));
+    assert.equal(db.read('connections/chat1').status, 'ended');
+    assert.deepEqual(db.read('accountHolds/held-bob'), hold);
+  });
+
+  test(`deletion of a reviewed account preserves its restrictive ${status} phone hold exactly`, async () => {
+    const originalAuth = firebase.auth;
+    firebase.auth = { deleteUser: async () => {} };
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: 'held-alice' });
+    db.seed('accountHolds/held-alice', hold);
+    try {
+      assert.deepEqual(await call(deleteAccount, {}), { pending: false });
+      assert.equal(db.read('users/alice'), undefined);
+      assert.equal(db.read('accountDeletions/alice').status, 'complete');
+      assert.deepEqual(db.read('accountHolds/held-alice'), hold);
+    } finally { firebase.auth = originalAuth; }
+  });
+}
+
+test('deletion may strengthen an under-minimum phone hold to a nonexpiring ban', async () => {
+  const originalAuth = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  db.seed('users/alice', { status: 'banned', phoneHash: 'held-alice' });
+  db.seed('accountHolds/held-alice', { status: 'under_minimum', deleteAt: new Date(Date.now() + 86400000) });
+  try {
+    await call(deleteAccount, {});
+    assert.equal(db.read('accountHolds/held-alice').status, 'banned');
+    assert.equal(db.read('accountHolds/held-alice').deleteAt, undefined);
+  } finally { firebase.auth = originalAuth; }
+});
+
 test('calculate age around a birthday', () => {
   assert.equal(accounts.ageOn('2000-06-15', new Date(Date.UTC(2018, 5, 14))), 17);
   assert.equal(accounts.ageOn('2000-06-15', new Date(Date.UTC(2018, 5, 15))), 18);
@@ -391,4 +440,129 @@ test('invalid message retry keys fail before writes',async()=>{
 test('replaying a delivered message does not send another push',async()=>{
   connection();db.seed('users/bob',{status:'active',ageConfirmedAt:1,pushToken:'ExpoPushToken[test-only]'});let sends=0;global.fetch=async()=>{sends++;return new Response('{"data":{"status":"ok"}}')};
   const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000005'};await call(sendMessage,data);await call(sendMessage,data);assert.equal(sends,1);
+});
+
+for(const status of ['suspended','',undefined,null,42]){
+ test('unknown account authorization state is denied: '+String(status),async()=>{connection();db.seed('users/alice',{status,ageConfirmedAt:1});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal([...db.values.values()].filter(x=>x.messageId).length,0);});
+}
+for(const ageConfirmedAt of [NaN,Infinity,0,-1]){
+ test('invalid age confirmation cannot authorize participation: '+String(ageConfirmedAt),async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'failed-precondition'});});
+}
+test('under-minimum state wins over stale age-confirmation metadata',async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt:1,ageCheck:'under_minimum'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'failed-precondition'});});
+test('reviewed accounts remain eligible until an explicit ban',async()=>{connection();db.seed('users/alice',{status:'reported',ageConfirmedAt:1});await assert.doesNotReject(call(sendMessage,{connectionId:'chat1',content:'Permitted reviewed account'}));});
+
+for (const ageConfirmedAt of [NaN, Infinity, 0, -1]) {
+  test('age confirmation repairs invalid numeric metadata: ' + String(ageConfirmedAt), async () => {
+    db.seed('users/carol', { status: 'active', ageConfirmedAt });
+    assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { confirmed: true });
+    const user = db.read('users/carol');
+    assert.ok(Number.isFinite(user.ageConfirmedAt) && user.ageConfirmedAt > 0);
+    assert.equal(user.ageCheck, 'adult');
+  });
+}
+test('an under-minimum phone hold overrides a stale adult confirmation', async () => {
+  const phoneHash = accounts.phoneHash('+919876543210');
+  db.seed(`accountHolds/${phoneHash}`, { status: 'under_minimum' });
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 1, phoneHash });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { confirmed: false });
+  assert.equal(db.read('users/carol').ageCheck, 'under_minimum');
+});
+test('an under-minimum phone hold denies participation despite stale adult metadata', async () => {
+  connection();
+  db.seed('accountHolds/held-phone', { status: 'under_minimum' });
+  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, phoneHash: 'held-phone' });
+  await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'failed-precondition' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Must not send' }), { code: 'failed-precondition' });
+  await assert.rejects(call(getMessages, { connectionId: 'chat1' }), { code: 'failed-precondition' });
+  assert.equal([...db.values.values()].filter(value => value.messageId).length, 0);
+});
+test('unknown phone-hold policies fail closed during age confirmation and participation', async () => {
+  connection();
+  const phoneHash = accounts.phoneHash('+919876543210');
+  db.seed(`accountHolds/${phoneHash}`, { status: 'suspended' });
+  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, phoneHash });
+  await assert.rejects(callWithPhone(confirmAge, { birthDate: adultBirth }, 'alice'), { code: 'permission-denied' });
+  await assert.rejects(call(getMessages, { connectionId: 'chat1' }), { code: 'permission-denied' });
+});
+for (const status of ['banned', 'suspended', undefined]) {
+  test('ineligible account cannot use age confirmation to advance onboarding: ' + String(status), async () => {
+    db.seed('users/carol', { status, ageConfirmedAt: 1 });
+    await assert.rejects(callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { code: 'permission-denied' });
+    assert.equal(db.read('users/carol').ageCheck, undefined);
+  });
+}
+test('a phone hold awaiting review is not incorrectly treated as a ban', async () => {
+  connection();
+  db.seed('accountHolds/reviewed-phone', { status: 'reported' });
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: 'reviewed-phone' });
+  await assert.doesNotReject(call(getMessages, { connectionId: 'chat1' }));
+});
+
+for (const [label, timestamp] of [['NaN', () => NaN], ['positive infinity', () => Infinity], ['future', () => Date.now() + 3600000]]) {
+  test(`a new reply rejects an unavailable ${label} target timestamp`, async () => {
+    connection();
+    db.seed('connections/chat1/messages/target', { senderId: 'bob', content: 'Unavailable target', sentAt: timestamp() });
+    await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Must not be committed', replyTo: 'target' }), { code: 'failed-precondition' });
+    assert.equal([...db.values.values()].filter(value => value.content === 'Must not be committed').length, 0);
+    assert.equal(db.read('connections/chat1').lastActivityAt, undefined);
+  });
+}
+test('future-dated rows cannot mask a valid latest-message preview', async () => {
+  connection();const now = Date.now();
+  db.seed('connections/chat1/messages/a-future', { senderId: 'bob', content: 'Future', sentAt: now + 3600000 });
+  db.seed('connections/chat1/messages/z-visible', { senderId: 'bob', content: 'Visible', sentAt: now - 1000 });
+  const result = await call(getMessages, { connectionId: 'chat1', latest: true });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
+test('future-dated rows cannot consume the bounded visible history page', async () => {
+  connection();const now = Date.now();
+  for (let index = 0; index < 201; index++) db.seed(`connections/chat1/messages/a-future-${String(index).padStart(3, '0')}`, { senderId: 'bob', content: 'Future', sentAt: now + 3600000 + index });
+  db.seed('connections/chat1/messages/z-visible', { senderId: 'bob', content: 'Visible', sentAt: now - 1000 });
+  const result = await call(getMessages, { connectionId: 'chat1' });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
+
+// Server-owned persisted expiries must not be coerced or treated as unbounded.
+for (const [label, invalidExpiry] of [
+  ['NaN', NaN], ['infinite', Infinity], ['missing', undefined],
+  ['numeric string', String(Date.now() + 86400000)], ['object', {}],
+]) {
+  test(`malformed ${label} code expiry cannot be redeemed`, async () => {
+    code('active', { expiresAt: invalidExpiry });
+    await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other), { code: 'not-found' });
+    assert.equal(db.read('tids/AB12').status, 'active');
+    assert.equal([...db.values.keys()].filter(p => p.startsWith('connectionRequests/')).length, 0);
+  });
+  test(`malformed ${label} request expiry cannot create a connection`, async () => {
+    pending({ expiresAt: invalidExpiry });
+    await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'failed-precondition' });
+    assert.equal(db.read('connectionRequests/req1').status, 'pending');
+    assert.equal([...db.values.keys()].filter(p => p.startsWith('connections/')).length, 0);
+  });
+  test(`malformed ${label} claimed code expiry cannot create a connection`, async () => {
+    pending(); db.seed('tids/AB12', { ...db.read('tids/AB12'), expiresAt: invalidExpiry });
+    await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'failed-precondition' });
+    assert.equal(db.read('tids/AB12').status, 'pending');
+    assert.equal([...db.values.keys()].filter(p => p.startsWith('connections/')).length, 0);
+  });
+}
+
+test('redeem response supplies server time for skew-independent requester expiry', async () => {
+  code();
+  const before = Date.now();
+  const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
+  assert.ok(Number.isFinite(result.servedAt));
+  assert.ok(result.servedAt >= before && result.servedAt <= Date.now());
+  assert.equal(result.expiresAt, db.read('tids/AB12').expiresAt);
+});
+
+test('redeem server anchor uses transaction time rather than restamping after notification work', async () => {
+  const originalNow = Date.now;
+  let now = originalNow();
+  Date.now = () => ++now;
+  try {
+    code();
+    const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, other);
+    assert.equal(result.servedAt, db.read(`connectionRequests/${result.requestId}`).createdAt);
+  } finally { Date.now = originalNow; }
 });

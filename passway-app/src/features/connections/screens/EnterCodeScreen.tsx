@@ -1,3 +1,4 @@
+import { connectionNow, type ConnectionClock } from '../clock';
 import { errorMessage } from '../../../services/errors';
 import type { RootNavigationProp } from '../../../navigation/types';
 import { useEffect, useRef, useState } from 'react';
@@ -5,7 +6,7 @@ import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
-import { redeemTid } from '../api/connections';
+import { newRedemptionId, redeemTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
 import { colors } from '../../../theme/colors';
@@ -22,6 +23,9 @@ export default function EnterCodeScreen() {
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [requestExpiresAt, setRequestExpiresAt] = useState<number | null>(null);
+  const [requestClock, setRequestClock] = useState<ConnectionClock | undefined>();
+  const connectInFlight = useRef(false);
+  const redemptionIntent = useRef<{ tid: string; displayName: string; id: string } | null>(null);
   const inputs = useRef<Array<TextInput | null>>([]);
   const uid = auth.currentUser?.uid ?? '';
 
@@ -60,7 +64,7 @@ export default function EnterCodeScreen() {
   }
 
   async function handleConnect() {
-    if (loading || requestId) return;
+    if (connectInFlight.current || loading || requestId) return;
     const code = digits.join('');
     if (code.length !== 4) {
       setError('Enter all four characters');
@@ -70,47 +74,61 @@ export default function EnterCodeScreen() {
       setError('Enter a name to show the other person');
       return;
     }
+    connectInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
+      const displayName = name.trim();
+      if (redemptionIntent.current?.tid !== code || redemptionIntent.current.displayName !== displayName) {
+        redemptionIntent.current = { tid: code, displayName, id: newRedemptionId() };
+      }
+      const redemptionId = redemptionIntent.current.id;
       const { lat, lng } = await getCurrentLocation();
-      const result = await redeemTid({ tid: code, lat, lng, displayName: name.trim() });
+      const result = await redeemTid({ tid: code, lat, lng, displayName, redemptionId });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
+      setRequestClock(result.clock);
       setRequestExpiresAt(result.expiresAt);
       setRequestId(result.requestId);
     } catch (err: unknown) {
       setError(errorMessage(err, 'That code did not work. Check it and try again.'));
     } finally {
+      connectInFlight.current = false;
       setLoading(false);
     }
   }
 
   useEffect(() => {
     if (!requestId) return;
-    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), (snap) => {
+    let active = true;
+    const unsubscribe = onSnapshot(doc(db, 'connectionRequests', requestId), { includeMetadataChanges: true }, (snap) => {
+      if (!active) return;
       const data = snap.data();
+      // Cache absence is not a server rejection of this newly created request.
+      if (!data && snap.metadata.fromCache) return;
       if (!data) {
         setError('This request is no longer available.');
         setRequestId(null);
         return;
       }
       if (data.status === 'accepted' && typeof data.connectionId === 'string') {
+        active = false; // Metadata-only replays cannot navigate a second time.
         navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: data.connectionId } }] });
       } else if (data.status === 'declined' || data.status === 'expired') {
         setError('That code is no longer available.');
         setRequestId(null);
       }
     }, (err) => {
+      if (!active) return;
       setError(errorMessage(err, 'Could not check the request.'));
       setRequestId(null);
     });
-    return unsubscribe;
+    return () => { active = false; unsubscribe(); };
   }, [requestId, navigation]);
 
   useEffect(() => {
     if (!requestId || !requestExpiresAt) return;
     const checkExpiry = () => {
-      if (Date.now() >= requestExpiresAt) {
+      if (connectionNow(requestClock) >= requestExpiresAt) {
         setRequestId(null);
         setError('The request expired. Ask them to generate a new code.');
       }
@@ -118,14 +136,14 @@ export default function EnterCodeScreen() {
     checkExpiry();
     const timer = setInterval(checkExpiry, 1000);
     return () => clearInterval(timer);
-  }, [requestId, requestExpiresAt]);
+  }, [requestId, requestExpiresAt, requestClock]);
 
   if (requestId) {
     return (
       <View style={styles.container}>
         <ScreenHeader showBack={false} />
         <View style={styles.center}>
-          <View style={styles.pulse}><ActivityIndicator color={colors.gold} size="large" /></View>
+          <View style={styles.pulse}><ActivityIndicator accessibilityLabel="Waiting for connection acceptance" color={colors.gold} size="large" /></View>
           <Text style={styles.title}>Waiting for them to accept</Text>
           <Text style={styles.helper}>They will see your name and choose to accept or decline.</Text>
         </View>

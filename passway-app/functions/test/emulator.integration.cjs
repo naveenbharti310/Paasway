@@ -31,6 +31,23 @@ async function seedCode() {
 async function seedConnection() {
   await collection('connections').doc('chat1').set({ connectionId: 'chat1', userA: 'alice', userB: 'bob', userAName: 'Alice', userBName: 'Bob', status: 'active', createdAt: Date.now() });
 }
+test('real transactions enforce an under-minimum phone hold over stale adult metadata', async () => {
+  await seedConnection();
+  await collection('accountHolds').doc('held-phone').set({ status: 'under_minimum' });
+  await collection('users').doc('alice').update({ phoneHash: 'held-phone' });
+  await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'failed-precondition' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Denied held account' }), { code: 'failed-precondition' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Denied held recipient' }, 'bob'), { code: 'failed-precondition' });
+  assert.equal((await collection('tids').get()).size, 0);
+  assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size, 0);
+});
+test('real transactions deny unknown phone-hold policy without partial effects', async () => {
+  await seedConnection();
+  await collection('accountHolds').doc('unknown-hold').set({ status: 'suspended' });
+  await collection('users').doc('alice').update({ phoneHash: 'unknown-hold' });
+  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Denied unknown hold' }), { code: 'permission-denied' });
+  assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size, 0);
+});
 test('concurrent redemption creates only one request', { timeout: 60000 }, async () => {
   await seedCode();
   const results = await Promise.allSettled(['bob', 'carol'].map((uid) => call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: uid }, uid)));
@@ -302,4 +319,254 @@ test('a block racing with an alternate-chat send remains authoritative after com
   await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId},'alice'),{code:'not-found'});
   assert.equal((await c.collection('messages').get()).size,sent.status==='fulfilled'?1:0);
  }
+});
+
+test('unknown recipient states deny real transaction reads and writes',async()=>{await seedConnection();await collection('users').doc('bob').update({status:'suspended'});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(require('../lib/handlers/messages').getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);});
+test('stale under-minimum metadata and malformed age confirmation cannot authorize real transactions',async()=>{await seedConnection();for(const patch of [{ageConfirmedAt:NaN},{ageConfirmedAt:Infinity},{ageConfirmedAt:0},{ageConfirmedAt:1,ageCheck:'under_minimum'}]){await collection('users').doc('alice').update(patch);await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'failed-precondition'});}assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);});
+
+test('a reviewed under-age phone stays restricted across real account deletion and recreation', async () => {
+  const firebase = require('../lib/lib/firebase');
+  const { confirmAge, deleteAccount } = require('../lib/handlers/accounts');
+  const { phoneHash } = require('../lib/lib/accounts');
+  const phone = '+919876543210', hash = phoneHash(phone);
+  const originalAuth = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  const confirm = (uid, birthDate) => confirmAge.run({ auth: { uid, token: { phone_number: phone } }, data: { birthDate } });
+  try {
+    await collection('users').doc('bob').set({ status: 'reported' });
+    await collection('accountHolds').doc(hash).set({ status: 'reported', deleteAt: new Date(Date.now() + 86400000) });
+    assert.deepEqual(await confirm('bob', `${new Date().getUTCFullYear() - 15}-01-01`), { confirmed: false });
+    assert.equal((await collection('accountHolds').doc(hash).get()).data().status, 'under_minimum');
+    await call(deleteAccount, {}, 'bob');
+    await collection('users').doc('recreated-bob').set({ status: 'active' });
+    assert.deepEqual(await confirm('recreated-bob', '1990-01-01'), { confirmed: false });
+    assert.equal((await collection('accountHolds').doc(hash).get()).data().status, 'under_minimum');
+  } finally { firebase.auth = originalAuth; }
+});
+
+for (const status of ['under_minimum', 'suspended']) {
+  test(`real reporting preserves the ${status} phone restriction`, async () => {
+    await seedConnection();
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    await collection('users').doc('bob').update({ phoneHash: 'held-bob' });
+    await collection('accountHolds').doc('held-bob').set(hold);
+    await call(fileReport, { connectionId: 'chat1', reportedId: 'bob', reason: 'Unsafe' });
+    const saved = (await collection('accountHolds').doc('held-bob').get()).data();
+    assert.equal(saved.status, status);
+    assert.equal(saved.updatedAt, hold.updatedAt);
+    assert.equal(saved.deleteAt.toMillis(), hold.deleteAt.getTime());
+    assert.equal((await collection('reports').get()).size, 1);
+  });
+
+  test(`real deletion preserves the ${status} phone restriction`, async () => {
+    const firebase = require('../lib/lib/firebase');
+    const originalAuth = firebase.auth;
+    firebase.auth = { deleteUser: async () => {} };
+    const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
+    try {
+      await collection('users').doc('bob').update({ status: 'reported', phoneHash: 'held-bob' });
+      await collection('accountHolds').doc('held-bob').set(hold);
+      await call(require('../lib/handlers/accounts').deleteAccount, {}, 'bob');
+      const saved = (await collection('accountHolds').doc('held-bob').get()).data();
+      assert.equal(saved.status, status);
+      assert.equal(saved.updatedAt, hold.updatedAt);
+      assert.equal(saved.deleteAt.toMillis(), hold.deleteAt.getTime());
+      assert.equal((await collection('users').doc('bob').get()).exists, false);
+    } finally { firebase.auth = originalAuth; }
+  });
+}
+
+test('a concurrent rate-limit burst cannot exceed its committed budget', { timeout: 60000 }, async () => {
+  const { withinRateLimit } = require('../lib/lib/rateLimits');
+  const results = await Promise.all(Array.from({ length: 12 }, () => withinRateLimit('alice', 'burst_probe', 4, 60000)));
+  assert.equal(results.filter(Boolean).length, 4);
+  assert.equal(results.filter(value => value === false).length, 8);
+  const events = (await collection('rateLimits').doc('alice_burst_probe').get()).data().events;
+  assert.equal(events.length, 4);
+});
+
+test('a failed deletion job rotates behind another pending account instead of starving it', { timeout: 60000 }, async () => {
+  const firebase = require('../lib/lib/firebase');
+  const originalAuth = firebase.auth;
+  const { requestAccountDeletion, resumePendingAccountDeletions } = require('../lib/services/accountDeletion');
+  const attempts = [];
+  firebase.auth = { deleteUser: async uid => { attempts.push(uid); if (uid === 'alice') throw new Error('Injected Auth outage'); } };
+  try {
+    await requestAccountDeletion('alice');
+    await requestAccountDeletion('bob');
+    await collection('accountDeletions').doc('alice').update({ lastAttemptAt: 1 });
+    await collection('accountDeletions').doc('bob').update({ lastAttemptAt: 2 });
+    assert.equal(await resumePendingAccountDeletions(), 0);
+    assert.equal(await resumePendingAccountDeletions(), 1);
+    assert.deepEqual(attempts, ['alice', 'bob']);
+    assert.equal((await collection('accountDeletions').doc('alice').get()).data().status, 'pending');
+    assert.equal((await collection('accountDeletions').doc('bob').get()).data().status, 'complete');
+  } finally { firebase.auth = originalAuth; }
+});
+
+for (const [label, timestamp] of [['NaN', () => NaN], ['positive infinity', () => Infinity], ['future', () => Date.now() + 3600000]]) {
+  test(`real transactions reject replies to an unavailable ${label} target`, async () => {
+    await seedConnection();
+    const messages = collection('connections').doc('chat1').collection('messages');
+    await messages.doc('target').set({ senderId: 'bob', content: 'Unavailable target', sentAt: timestamp() });
+    await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Must not be committed', replyTo: 'target' }), { code: 'failed-precondition' });
+    assert.equal((await messages.get()).size, 1);
+    assert.equal((await collection('connections').doc('chat1').get()).data().lastActivityAt, undefined);
+  });
+}
+test('real latest-message query excludes future rows before applying its limit', async () => {
+  await seedConnection();const messages = collection('connections').doc('chat1').collection('messages'), now = Date.now();
+  await messages.doc('future').set({ senderId: 'bob', content: 'Future', sentAt: now + 3600000 });
+  await messages.doc('visible').set({ senderId: 'bob', content: 'Visible', sentAt: now - 1000 });
+  const result = await call(require('../lib/handlers/messages').getMessages, { connectionId: 'chat1', latest: true });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
+test('real bounded history is not starved by more than 200 future rows', async () => {
+  await seedConnection();const messages = collection('connections').doc('chat1').collection('messages'), batch = db.batch(), now = Date.now();
+  for (let index = 0; index < 201; index++) batch.set(messages.doc(`future-${index}`), { senderId: 'bob', content: 'Future', sentAt: now + 3600000 + index });
+  batch.set(messages.doc('visible'), { senderId: 'bob', content: 'Visible', sentAt: now - 1000 });await batch.commit();
+  const result = await call(require('../lib/handlers/messages').getMessages, { connectionId: 'chat1' });
+  assert.deepEqual(result.messages.map(message => message.content), ['Visible']);
+});
+
+for (const [label, invalidExpiry] of [
+  ['NaN', NaN], ['infinite', Infinity], ['missing', undefined],
+  ['numeric string', String(Date.now() + 86400000)], ['object', {}],
+]) {
+  async function malformedExpiry(ref) {
+    const value = invalidExpiry === undefined ? require('firebase-admin/firestore').FieldValue.delete() : invalidExpiry;
+    await ref.update({ expiresAt: value });
+  }
+  test(`real malformed ${label} code expiry cannot be redeemed`, async () => {
+    await seedCode(); await malformedExpiry(collection('tids').doc('AB12'));
+    await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob'), { code: 'not-found' });
+    assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+    assert.equal((await collection('connectionRequests').get()).size, 0);
+  });
+  test(`real malformed ${label} request expiry cannot create a connection`, async () => {
+    await seedCode(); const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+    await malformedExpiry(collection('connectionRequests').doc(result.requestId));
+    await assert.rejects(call(respondToRequest, { requestId: result.requestId, accept: true }), { code: 'failed-precondition' });
+    assert.equal((await collection('connectionRequests').doc(result.requestId).get()).data().status, 'pending');
+    assert.equal((await collection('connections').get()).size, 0);
+  });
+  test(`real malformed ${label} claimed code expiry cannot create a connection`, async () => {
+    await seedCode(); const result = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+    await malformedExpiry(collection('tids').doc('AB12'));
+    await assert.rejects(call(respondToRequest, { requestId: result.requestId, accept: true }), { code: 'failed-precondition' });
+    assert.equal((await collection('tids').doc('AB12').get()).data().status, 'pending');
+    assert.equal((await collection('connections').get()).size, 0);
+  });
+}
+
+for (const deletingUid of ['alice', 'bob']) {
+ test(`real deletion resolves a pending pairing when ${deletingUid} leaves before acceptance`, async () => {
+  await seedCode();
+  const pending = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+  const firebase = require('../lib/lib/firebase'), oldAuth = firebase.auth;
+  firebase.auth = { deleteUser: async () => {} };
+  try { assert.deepEqual(await call(require('../lib/handlers/accounts').deleteAccount, {}, deletingUid), { pending: false }); }
+  finally { firebase.auth = oldAuth; }
+  assert.equal((await collection('connectionRequests').doc(pending.requestId).get()).data().status, 'declined');
+  assert.equal((await collection('tids').doc('AB12').get()).data().status, 'expired');
+  await assert.rejects(call(respondToRequest, { requestId: pending.requestId, accept: true }));
+  assert.equal((await collection('connections').get()).size, 0);
+ });
+}
+test('real accept/delete race leaves no live connection or unresolved pending request', { timeout: 60000 }, async () => {
+ await seedCode(); const pending = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+ const firebase = require('../lib/lib/firebase'), oldAuth = firebase.auth; firebase.auth = { deleteUser: async () => {} };
+ try {
+  const outcomes = await Promise.allSettled([call(respondToRequest, { requestId: pending.requestId, accept: true }), call(require('../lib/handlers/accounts').deleteAccount, {}, 'bob')]);
+  assert.equal(outcomes[1].status, 'fulfilled'); assert.deepEqual(outcomes[1].value, { pending: false });
+ } finally { firebase.auth = oldAuth; }
+ assert.notEqual((await collection('connectionRequests').doc(pending.requestId).get()).data().status, 'pending');
+ assert.equal((await collection('connections').where('status', '==', 'active').get()).size, 0);
+ assert.equal((await collection('accountDeletions').doc('bob').get()).data().status, 'complete');
+});
+
+test('real transactions: concurrent same-intent redemption converges and lost ACK recovers', {timeout:60000}, async()=>{
+  await seedCode();
+  const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0001'};
+  const results=await Promise.all([call(redeemTid,data,'bob'),call(redeemTid,data,'bob'),call(redeemTid,data,'bob')]);
+  assert.equal(new Set(results.map(r=>r.requestId)).size,1);
+  assert.equal((await collection('connectionRequests').get()).size,1);
+  const recovered=await call(redeemTid,data,'bob');
+  assert.equal(recovered.requestId,results[0].requestId);assert.equal(recovered.expiresAt,results[0].expiresAt);
+});
+test('real transactions: a committed acceptance before redemption retry is recovered once',async()=>{
+  await seedCode();const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0002'};
+  const first=await call(redeemTid,data,'bob');
+  const accepted=await call(respondToRequest,{requestId:first.requestId,accept:true});
+  assert.equal((await call(redeemTid,data,'bob')).requestId,first.requestId);
+  assert.equal((await collection('connections').get()).size,1);
+  await call(endConnection,{connectionId:accepted.connectionId},'bob');
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+});
+test('real transactions: requester identity, blocks, and diagnostic cohort remain enforced on replay',async()=>{
+  await seedCode();const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0003'};
+  await call(redeemTid,data,'bob');
+  await assert.rejects(call(redeemTid,data,'carol'),{code:'not-found'});
+  await collection('users').doc('alice').update({automatedTest:true});
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+  await collection('users').doc('alice').update({automatedTest:false});
+  await collection('blocks').doc('alice:bob').set({createdAt:Date.now()});
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+  assert.equal((await collection('connectionRequests').get()).size,1);
+});
+test('real transactions: old intent cannot claim a recycled code incarnation',async()=>{
+  await seedCode();const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0004'};
+  const first=await call(redeemTid,data,'bob');const original=(await collection('tids').doc('AB12').get()).data();
+  await collection('tids').doc('AB12').set({...original,status:'active',createdAt:original.createdAt+1});
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+  const next=await call(redeemTid,{...data,redemptionId:'real-firestore-intent-0005'},'bob');
+  assert.notEqual(first.requestId,next.requestId);
+  assert.equal((await collection('connectionRequests').get()).size,2);
+});
+
+test('real maintenance lease releases failures for immediate retry', { timeout: 60000 }, async () => {
+  const { withMaintenanceLease } = require('../lib/services/maintenanceLease');
+  const now = Date.now();
+  await assert.rejects(withMaintenanceLease(async () => { throw Error('injected outage'); }, { now: () => now }), /injected outage/);
+  const failed = (await collection('system').doc('maintenance').get()).data();
+  assert.equal(failed.lastRunAt, undefined);
+  assert.equal(failed.leaseOwner, undefined);
+  assert.equal((await withMaintenanceLease(async () => 'retried', { now: () => now + 1 })).result, 'retried');
+});
+test('real maintenance transactions serialize simultaneous forced claimants', { timeout: 60000 }, async () => {
+  const { withMaintenanceLease } = require('../lib/services/maintenanceLease');
+  let release;
+  const first = withMaintenanceLease(() => new Promise(resolve => { release = resolve; }));
+  while (!release) await new Promise(resolve => setTimeout(resolve, 5));
+  const contenders = await Promise.all(Array.from({ length: 6 }, () => withMaintenanceLease(async () => assert.fail('lease was bypassed'), { force: true })));
+  assert.equal(contenders.filter(result => result.ran).length, 0);
+  release(1);
+  await first;
+});
+for (const fails of [false, true]) test(`real expired maintenance ${fails ? 'failure' : 'completion'} preserves replacement ownership`, { timeout: 60000 }, async () => {
+  const { withMaintenanceLease, MAINTENANCE_LEASE_MS } = require('../lib/services/maintenanceLease');
+  let clock = Date.now(), release;
+  const first = withMaintenanceLease(() => new Promise((resolve, reject) => { release = () => fails ? reject(Error('old worker failed')) : resolve(1); }), { now: () => clock });
+  while (!release) await new Promise(resolve => setTimeout(resolve, 5));
+  clock += MAINTENANCE_LEASE_MS;
+  let releaseReplacement;
+  const replacement = withMaintenanceLease(() => new Promise(resolve => { releaseReplacement = resolve; }), { now: () => clock });
+  while (!releaseReplacement) await new Promise(resolve => setTimeout(resolve, 5));
+  const claim = (await collection('system').doc('maintenance').get()).data();
+  release();
+  if (fails) await assert.rejects(first, /old worker failed/); else await first;
+  assert.deepEqual((await collection('system').doc('maintenance').get()).data(), claim);
+  releaseReplacement(2);
+  await replacement;
+  assert.equal((await collection('system').doc('maintenance').get()).data().lastRunAt, clock);
+});
+test('real legacy maintenance success timestamp and expired completion remain safe', { timeout: 60000 }, async () => {
+  const { withMaintenanceLease, MAINTENANCE_LEASE_MS } = require('../lib/services/maintenanceLease');
+  let clock = Date.now();
+  const ref = collection('system').doc('maintenance');
+  await ref.set({ lastRunAt: clock });
+  assert.equal((await withMaintenanceLease(async () => assert.fail(), { now: () => clock })).ran, false);
+  await withMaintenanceLease(async () => { clock += MAINTENANCE_LEASE_MS; }, { now: () => clock, force: true });
+  assert.ok((await ref.get()).data().lastRunAt < clock);
+  assert.equal((await ref.get()).data().leaseOwner, undefined);
 });

@@ -4,9 +4,9 @@ import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { assertAccountActive, assertSameTestCohort } from '../lib/accounts';
 import { assertNotBlocked } from '../lib/blocks';
-import { documentId } from '../lib/validation';
+import { documentId, isUnexpiredMillis } from '../lib/validation';
 import { connectionRef, endConnectionAs } from '../services/connections';
-import { runMaintenance } from '../services/cleanup';
+import { runCoordinatedMaintenance } from '../services/cleanup';
 
 export const respondToRequest = authedCallable(async (uid, data) => {
   const requestId = documentId(data.requestId, 'Request');
@@ -42,7 +42,7 @@ export const respondToRequest = authedCallable(async (uid, data) => {
     }
     if (data.accept) {
       const now = Date.now();
-      if (pending.expiresAt <= now || code.expiresAt <= now) throw new HttpsError('failed-precondition', 'This request has expired.');
+      if (!isUnexpiredMillis(pending.expiresAt, now) || !isUnexpiredMillis(code.expiresAt, now)) throw new HttpsError('failed-precondition', 'This request has expired.');
       if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
       const generator = await assertAccountActive(uid, tx);
       const requester = await assertAccountActive(pending.requesterId, tx);
@@ -65,5 +65,5 @@ export const endConnection = authedCallable(async (uid, data) => {
 });
 
 export const closeIdleConnectionsJob = onSchedule({ schedule: 'every 60 minutes', retryCount: 1 }, async () => {
-  await runMaintenance();
+  await runCoordinatedMaintenance(Date.now(), true);
 });
