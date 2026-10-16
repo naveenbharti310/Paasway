@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
 import { signOut } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
@@ -23,6 +23,9 @@ export default function SettingsScreen() {
   const uid = auth.currentUser?.uid ?? '';
   const [name, setName] = useState('');
   const [savedName, setSavedName] = useState('');
+  const operationInFlight = useRef(false);
+  const confirmationOpen = useRef(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,7 +40,8 @@ export default function SettingsScreen() {
 
   async function handleSaveName() {
     const value = name.trim();
-    if (!value || value === savedName || saving) return;
+    if (!value || value === savedName || saving || operationInFlight.current) return;
+    operationInFlight.current = true;
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -48,34 +52,52 @@ export default function SettingsScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not save your name. Try again.'));
     } finally {
+      operationInFlight.current = false;
       setSaving(false);
     }
   }
 
   async function runDelete() {
+    confirmationOpen.current = false;
+    if (operationInFlight.current) return;
+    operationInFlight.current = true;
     setDeleting(true);
     setError(null);
     try {
       await deleteAccount({});
-      await signOut(auth).catch(() => undefined);
+      await signOut(auth);
     } catch (err) {
       setError(errorMessage(err, 'Could not delete your account. Try again.'));
+    } finally {
+      operationInFlight.current = false;
       setDeleting(false);
     }
   }
 
+  async function handleSignOut() {
+    if (operationInFlight.current) return;
+    operationInFlight.current = true; setSigningOut(true); setError(null);
+    try { await signOut(auth); }
+    catch (err) { setError(errorMessage(err, 'Could not sign out. Try again.')); }
+    finally { operationInFlight.current = false; setSigningOut(false); }
+  }
+
   function confirmDelete() {
+    if (operationInFlight.current || confirmationOpen.current) return;
+    confirmationOpen.current = true;
     const title = 'Delete your account?';
     const body = 'Your profile and sign in are removed and any open chat is ended. Messages already sent are deleted on their normal schedule. This cannot be undone.';
     // Alert buttons do nothing in a browser, so the web preview asks with confirm.
     if (Platform.OS === 'web') {
       if (window.confirm(`${title}\n\n${body}`)) void runDelete();
+      else confirmationOpen.current = false;
       return;
     }
     Alert.alert(
       title,
       body,
-      [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() }],
+      [{ text: 'Cancel', style: 'cancel', onPress: () => { confirmationOpen.current = false; } }, { text: 'Delete account', style: 'destructive', onPress: () => void runDelete() }],
+      { onDismiss: () => { confirmationOpen.current = false; } },
     );
   }
 
@@ -105,8 +127,8 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.helper}>Your phone number is used only to sign in. It is never shown to anyone.</Text>
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-        <Button label="Sign out" testID="sign-out" variant="secondary" onPress={() => void signOut(auth)} disabled={deleting} />
-        <Button label="Delete account" variant="danger" onPress={confirmDelete} loading={deleting} testID="delete-account" />
+        <Button label="Sign out" testID="sign-out" variant="secondary" onPress={handleSignOut} loading={signingOut} disabled={deleting || saving} />
+        <Button label="Delete account" variant="danger" onPress={confirmDelete} loading={deleting} disabled={saving || signingOut} testID="delete-account" />
       </View>
     </ScrollView><BottomNav active="you" /></View>
   );

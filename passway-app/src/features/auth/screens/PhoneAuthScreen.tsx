@@ -1,5 +1,5 @@
 import { errorMessage } from '../../../services/errors';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import FormScreen from '../../../components/FormScreen';
 import { useNavigation } from '@react-navigation/native';
@@ -28,35 +28,40 @@ export default function PhoneAuthScreen() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [confirmation, setConfirmation] = useState<PhoneConfirmation | null>(null);
+  const authInFlight = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSendCode() {
-    if (loading) return;
+    if (authInFlight.current || loading) return;
     const number = indianNumber(phone);
     if (!number) {
       setError('Enter a 10 digit Indian mobile number');
       return;
     }
+    authInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
       // 2Factor verifies server-side; Firebase SMS remains available by build setting.
       const result = await beginPhoneSignIn(number);
       setConfirmation(result);
+      setCode('');
     } catch (err: unknown) {
       setError(errorMessage(err, 'Could not send a code. Check the number and try again.'));
     } finally {
+      authInFlight.current = false;
       setLoading(false);
     }
   }
 
   async function handleVerifyCode() {
-    if (loading) return;
+    if (authInFlight.current || loading) return;
     if (!confirmation || !/^\d{6}$/.test(code.trim())) {
       setError('Enter the 6 digit code');
       return;
     }
+    authInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -66,6 +71,7 @@ export default function PhoneAuthScreen() {
     } catch (err: unknown) {
       setError(errorMessage(err, 'That code did not match. Try again.'));
     } finally {
+      authInFlight.current = false;
       setLoading(false);
     }
   }
@@ -96,7 +102,7 @@ export default function PhoneAuthScreen() {
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Verify" onPress={handleVerifyCode} loading={loading} testID="verify" />
             <Button label="Send another code" variant="secondary" onPress={handleSendCode} disabled={loading} />
-            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { setConfirmation(null); setCode(''); setError(null); }} />
+            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { if (authInFlight.current) return; setConfirmation(null); setCode(''); setError(null); }} />
           </>
         )}
     </FormScreen>

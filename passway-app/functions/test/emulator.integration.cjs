@@ -484,3 +484,42 @@ test('real accept/delete race leaves no live connection or unresolved pending re
  assert.equal((await collection('connections').where('status', '==', 'active').get()).size, 0);
  assert.equal((await collection('accountDeletions').doc('bob').get()).data().status, 'complete');
 });
+
+test('real transactions: concurrent same-intent redemption converges and lost ACK recovers', {timeout:60000}, async()=>{
+  await seedCode();
+  const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0001'};
+  const results=await Promise.all([call(redeemTid,data,'bob'),call(redeemTid,data,'bob'),call(redeemTid,data,'bob')]);
+  assert.equal(new Set(results.map(r=>r.requestId)).size,1);
+  assert.equal((await collection('connectionRequests').get()).size,1);
+  const recovered=await call(redeemTid,data,'bob');
+  assert.equal(recovered.requestId,results[0].requestId);assert.equal(recovered.expiresAt,results[0].expiresAt);
+});
+test('real transactions: a committed acceptance before redemption retry is recovered once',async()=>{
+  await seedCode();const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0002'};
+  const first=await call(redeemTid,data,'bob');
+  const accepted=await call(respondToRequest,{requestId:first.requestId,accept:true});
+  assert.equal((await call(redeemTid,data,'bob')).requestId,first.requestId);
+  assert.equal((await collection('connections').get()).size,1);
+  await call(endConnection,{connectionId:accepted.connectionId},'bob');
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+});
+test('real transactions: requester identity, blocks, and diagnostic cohort remain enforced on replay',async()=>{
+  await seedCode();const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0003'};
+  await call(redeemTid,data,'bob');
+  await assert.rejects(call(redeemTid,data,'carol'),{code:'not-found'});
+  await collection('users').doc('alice').update({automatedTest:true});
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+  await collection('users').doc('alice').update({automatedTest:false});
+  await collection('blocks').doc('alice:bob').set({createdAt:Date.now()});
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+  assert.equal((await collection('connectionRequests').get()).size,1);
+});
+test('real transactions: old intent cannot claim a recycled code incarnation',async()=>{
+  await seedCode();const data={tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob',redemptionId:'real-firestore-intent-0004'};
+  const first=await call(redeemTid,data,'bob');const original=(await collection('tids').doc('AB12').get()).data();
+  await collection('tids').doc('AB12').set({...original,status:'active',createdAt:original.createdAt+1});
+  await assert.rejects(call(redeemTid,data,'bob'),{code:'not-found'});
+  const next=await call(redeemTid,{...data,redemptionId:'real-firestore-intent-0005'},'bob');
+  assert.notEqual(first.requestId,next.requestId);
+  assert.equal((await collection('connectionRequests').get()).size,2);
+});

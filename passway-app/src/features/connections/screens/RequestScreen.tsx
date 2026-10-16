@@ -1,6 +1,6 @@
 import { connectionNow } from '../clock';
 import { errorMessage } from '../../../services/errors';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db } from '../../../firebase/client';
@@ -28,6 +28,7 @@ export default function RequestScreen() {
     const timer = setInterval(() => setExpired(connectionNow(clock) >= expiresAt), 1000);
     return () => clearInterval(timer);
   }, [expiresAt, clock]);
+  const responseInFlight = useRef(false);
   const [loading, setLoading] = useState<'accept' | 'decline' | null>(null);
 
   useEffect(() => {
@@ -49,7 +50,8 @@ export default function RequestScreen() {
   const elapsedSeconds = Math.max(0, Math.round((requestedAt - tidCreatedAt) / 1000));
 
   async function handleRespond(accept: boolean) {
-    if (loading || (accept && (expired || unavailable))) return;
+    if (responseInFlight.current || loading || (accept && (expired || unavailable))) return;
+    responseInFlight.current = true;
     setError(null);
     setLoading(accept ? 'accept' : 'decline');
     try {
@@ -62,6 +64,7 @@ export default function RequestScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not respond to the request. Try again.'));
     } finally {
+      responseInFlight.current = false;
       setLoading(null);
     }
   }

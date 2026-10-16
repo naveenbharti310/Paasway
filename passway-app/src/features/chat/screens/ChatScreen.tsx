@@ -71,6 +71,9 @@ export default function ChatScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const sendInFlight = useRef(false);
+  const safetyInFlight = useRef(false);
+  const noteInFlight = useRef(false);
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,11 +185,12 @@ export default function ChatScreen() {
 
   async function handleSend() {
     const text = draft.trim();
-    if (!text || sending || ending || submitting || connection?.status !== 'active') return;
-    tap();
+    if (!text || sendInFlight.current || safetyInFlight.current || navigatedAway.current || sending || ending || submitting || connection?.status !== 'active') return;
+    sendInFlight.current = true;
     setSending(true);
     setError(null);
     try {
+      tap();
       nearBottom.current = true;
       const attempt = messageAttempts.current.forMessage(connectionId, text, replyingTo?.messageId);
       const result = await sendMessage(attempt);
@@ -197,12 +201,14 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Your message was not sent. Try again.'));
     } finally {
+      sendInFlight.current = false;
       setSending(false);
     }
   }
 
   async function handleEnd() {
-    if (ending || submitting) return;
+    if (safetyInFlight.current || navigatedAway.current || ending || submitting) return;
+    safetyInFlight.current = true;
     setMenuVisible(false);
     setEnding(true);
     setError(null);
@@ -212,12 +218,14 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not end the connection. Try again.'));
     } finally {
+      safetyInFlight.current = false;
       setEnding(false);
     }
   }
 
   async function handleBlock() {
-    if (ending || submitting) return;
+    if (safetyInFlight.current || navigatedAway.current || ending || submitting) return;
+    safetyInFlight.current = true;
     setMenuVisible(false);
     setEnding(true);
     setError(null);
@@ -227,12 +235,14 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not block this person. Try again.'));
     } finally {
+      safetyInFlight.current = false;
       setEnding(false);
     }
   }
 
   async function handleReport(reason: string) {
-    if (submitting || ending || !otherId) return;
+    if (safetyInFlight.current || navigatedAway.current || submitting || ending || !otherId) return;
+    safetyInFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -242,6 +252,7 @@ export default function ChatScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Your report was not saved. Try again.'));
     } finally {
+      safetyInFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -319,6 +330,8 @@ export default function ChatScreen() {
             {noteError && <Text accessibilityRole="alert" style={styles.noteError}>{noteError}</Text>}
             {/* Save is only offered when something changed. Remove only when a note exists. */}
             <TouchableOpacity style={[styles.sheetRow, (noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) && styles.sheetRowOff]} testID="note-save" disabled={savingNote || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)} onPress={async () => {
+              if (noteInFlight.current || noteDraft.trim() === (note ?? '') || (!noteDraft.trim() && !note)) return;
+              noteInFlight.current = true;
               // Wait for the save to finish so the note is never lost if the app closes straight away.
               setSavingNote(true);
               setNoteError(null);
@@ -328,6 +341,7 @@ export default function ChatScreen() {
               } catch (err) {
                 setNoteError(errorMessage(err, 'Could not save the note. Try again.'));
               } finally {
+                noteInFlight.current = false;
                 setSavingNote(false);
               }
             }}>

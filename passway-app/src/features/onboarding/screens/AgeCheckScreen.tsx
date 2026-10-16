@@ -21,17 +21,19 @@ export default function AgeCheckScreen({ onResult }: Props) {
   const [year, setYear] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const operationInFlight = useRef(false);
   const dayRef = useRef<TextInput>(null);
   const monthRef = useRef<TextInput>(null);
   const yearRef = useRef<TextInput>(null);
 
   async function handleContinue() {
-    if (loading) return;
+    if (operationInFlight.current || loading) return;
     const d = Number(day), m = Number(month), y = Number(year);
     if (!d || !m || year.length !== 4 || d > 31 || m > 12) {
       setError('Enter your full date of birth');
       return;
     }
+    operationInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -41,8 +43,17 @@ export default function AgeCheckScreen({ onResult }: Props) {
     } catch (err) {
       setError(errorMessage(err, 'Could not check your age. Try again.'));
     } finally {
+      operationInFlight.current = false;
       setLoading(false);
     }
+  }
+
+  async function handleSignOut() {
+    if (operationInFlight.current) return;
+    operationInFlight.current = true; setLoading(true); setError(null);
+    try { await signOut(auth); }
+    catch (err) { setError(errorMessage(err, 'Could not sign out. Try again.')); }
+    finally { operationInFlight.current = false; setLoading(false); }
   }
 
   const digits = (value: string) => value.replace(/\D/g, '');
@@ -62,7 +73,7 @@ export default function AgeCheckScreen({ onResult }: Props) {
         </View>
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         <Button label="Continue" onPress={handleContinue} loading={loading} testID="age-continue" />
-        <Button label="Sign out" variant="ghost" onPress={() => void signOut(auth)} disabled={loading} />
+        <Button label="Sign out" variant="ghost" onPress={handleSignOut} disabled={loading} />
     </FormScreen>
   );
 }

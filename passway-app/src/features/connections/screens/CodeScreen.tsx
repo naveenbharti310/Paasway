@@ -1,6 +1,6 @@
 import { remainingSeconds } from '../clock';
 import { errorMessage } from '../../../services/errors';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { collection, query, where, limit, onSnapshot } from '@react-native-firebase/firestore';
@@ -18,6 +18,7 @@ export default function CodeScreen() {
   const { params } = useRoute<CodeRouteProp>();
   const { tid, createdAt, expiresAt, clock } = params;
   const [secondsLeft, setSecondsLeft] = useState(remainingSeconds(expiresAt, clock));
+  const cancelInFlight = useRef(false);
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +69,8 @@ export default function CodeScreen() {
   }), [navigation]);
 
   async function handleCancel() {
-    if (canceling) return;
+    if (cancelInFlight.current || canceling) return;
+    cancelInFlight.current = true;
     setCanceling(true);
     setError(null);
     try {
@@ -77,6 +79,7 @@ export default function CodeScreen() {
     } catch (err) {
       setError(errorMessage(err, 'Could not cancel the code. Try again.'));
     } finally {
+      cancelInFlight.current = false;
       setCanceling(false);
     }
   }

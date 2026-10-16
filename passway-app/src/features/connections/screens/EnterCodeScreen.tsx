@@ -6,7 +6,7 @@ import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-nati
 import { useNavigation } from '@react-navigation/native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db, auth } from '../../../firebase/client';
-import { redeemTid } from '../api/connections';
+import { newRedemptionId, redeemTid } from '../api/connections';
 import { getCurrentLocation } from '../../../services/location';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
 import { colors } from '../../../theme/colors';
@@ -24,6 +24,8 @@ export default function EnterCodeScreen() {
   const [requestId, setRequestId] = useState<string | null>(null);
   const [requestExpiresAt, setRequestExpiresAt] = useState<number | null>(null);
   const [requestClock, setRequestClock] = useState<ConnectionClock | undefined>();
+  const connectInFlight = useRef(false);
+  const redemptionIntent = useRef<{ tid: string; displayName: string; id: string } | null>(null);
   const inputs = useRef<Array<TextInput | null>>([]);
   const uid = auth.currentUser?.uid ?? '';
 
@@ -62,7 +64,7 @@ export default function EnterCodeScreen() {
   }
 
   async function handleConnect() {
-    if (loading || requestId) return;
+    if (connectInFlight.current || loading || requestId) return;
     const code = digits.join('');
     if (code.length !== 4) {
       setError('Enter all four characters');
@@ -72,11 +74,17 @@ export default function EnterCodeScreen() {
       setError('Enter a name to show the other person');
       return;
     }
+    connectInFlight.current = true;
     setLoading(true);
     setError(null);
     try {
+      const displayName = name.trim();
+      if (redemptionIntent.current?.tid !== code || redemptionIntent.current.displayName !== displayName) {
+        redemptionIntent.current = { tid: code, displayName, id: newRedemptionId() };
+      }
+      const redemptionId = redemptionIntent.current.id;
       const { lat, lng } = await getCurrentLocation();
-      const result = await redeemTid({ tid: code, lat, lng, displayName: name.trim() });
+      const result = await redeemTid({ tid: code, lat, lng, displayName, redemptionId });
       void saveDefaultName(uid, name.trim()).catch(() => console.warn('Default name could not be saved.'));
       setRequestClock(result.clock);
       setRequestExpiresAt(result.expiresAt);
@@ -84,6 +92,7 @@ export default function EnterCodeScreen() {
     } catch (err: unknown) {
       setError(errorMessage(err, 'That code did not work. Check it and try again.'));
     } finally {
+      connectInFlight.current = false;
       setLoading(false);
     }
   }
