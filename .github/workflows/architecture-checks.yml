@@ -3,17 +3,11 @@ name: Architecture regression and security gates
 # PR/push gates are credential-free; central exact-source checks remain an
 # independent repeat, not a substitute for a failing source workflow.
 on:
-  pull_request:
-    paths:
-      - 'passway-app/**'
-      - '.github/workflows/architecture-checks.yml'
-      - '.github/tests/**'
+  # Required branch checks must run for every PR, including documentation-only
+  # changes. Path filters otherwise leave mandatory checks pending forever.
+  pull_request: {}
   push:
     branches: [main]
-    paths:
-      - 'passway-app/**'
-      - '.github/workflows/architecture-checks.yml'
-      - '.github/tests/**'
   workflow_dispatch:
 permissions:
   contents: read
