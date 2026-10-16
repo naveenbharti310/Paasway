@@ -179,5 +179,5 @@ test('late permission approval after a deadline cannot start GPS work', async ()
 
 test("next store candidate has a new monotonic version and hardened attestation profile", () => {
  const c=buildConfig({EAS_BUILD_PROFILE:"play-attestation",EXPO_PUBLIC_APP_CHECK:"on",EXPO_PUBLIC_OTP_PROVIDER:"2factor"}).default;
- assert.equal(c.version,"0.3.1");assert.equal(c.android.versionCode,7);assert.equal(c.android.allowBackup,false);
+ assert.equal(c.version,"0.3.2");assert.equal(c.android.versionCode,8);assert.equal(c.android.allowBackup,false);
 });
