@@ -1,4 +1,4 @@
-import { applicationDefault } from 'firebase-admin/app';
+import { applicationDefault, getApp } from 'firebase-admin/app';
 import { log } from './lib/logger';
 
 const EARLY_CONNECTION_WINDOW_SECONDS = 180;
@@ -71,7 +71,9 @@ let cachedToken: { value: string; expiresAt: number } | undefined;
 
 async function accessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  const token = await applicationDefault().getAccessToken();
+  // External hosts initialize Firebase with an explicit certificate. Reuse that
+  // credential rather than probing for unrelated Application Default Credentials.
+  const token = await (getApp().options.credential ?? applicationDefault()).getAccessToken();
   cachedToken = { value: token.access_token, expiresAt: Date.now() + token.expires_in * 1000 };
   return token.access_token;
 }
@@ -80,15 +82,35 @@ async function accessToken(): Promise<string> {
 // own service account, so no API key is stored. Enable the Cloud Natural
 // Language API in the project for it to work.
 export async function googleModerate(content: string): Promise<ClassifierCategory[]> {
-  const response = await fetch('https://language.googleapis.com/v2/documents:moderateText', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${await accessToken()}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ document: { type: 'PLAIN_TEXT', content } }),
-    signal: AbortSignal.timeout(2500),
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error('Moderation deadline exceeded.'));
+      controller.abort();
+    }, 2500);
   });
-  if (!response.ok) throw new Error(`Moderation request failed with status ${response.status}.`);
-  const body = await response.json() as { moderationCategories?: ClassifierCategory[] };
-  return body.moderationCategories ?? [];
+  try {
+    // One wall-clock budget covers credential lookup, network IO and parsing.
+    // Credential providers are not abortable; check the signal after they finish
+    // so a timed-out attempt cannot later send message content in the background.
+    return await Promise.race([deadline, (async () => {
+      const token = await accessToken();
+      controller.signal.throwIfAborted();
+      const response = await fetch('https://language.googleapis.com/v2/documents:moderateText', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ document: { type: 'PLAIN_TEXT', content } }),
+        signal: controller.signal,
+        redirect: 'error',
+      });
+      if (!response.ok) throw new Error(`Moderation request failed with status ${response.status}.`);
+      const body = await response.json() as { moderationCategories?: ClassifierCategory[] };
+      return body.moderationCategories ?? [];
+    })()]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 // Replaceable in tests. Set MODERATION_PROVIDER=rules to skip the Google call.
