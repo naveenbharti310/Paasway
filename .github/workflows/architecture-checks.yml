@@ -1,10 +1,19 @@
 name: Architecture regression and security gates
-# Exact-source validation is dispatched in Cynqra/passway-native-tests while
-# this personal account's Actions jobs are blocked before startup. This is not
-# an automatic cross-repository trigger; keep the source workflow manual.
-# Exact-source enterprise regression AND dependency-security statuses must be
-# inspected before merge. Dependency failures are never suppressed.
+# Source Actions startup is verified working by run38923294297 (Oct16).
+# PR/push gates are credential-free; central exact-source checks remain an
+# independent repeat, not a substitute for a failing source workflow.
 on:
+  pull_request:
+    paths:
+      - 'passway-app/**'
+      - '.github/workflows/architecture-checks.yml'
+      - '.github/tests/**'
+  push:
+    branches: [main]
+    paths:
+      - 'passway-app/**'
+      - '.github/workflows/architecture-checks.yml'
+      - '.github/tests/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -52,6 +61,10 @@ jobs:
       - run: npm test --prefix functions
       - run: npm run test:emulator
       - run: npx --no-install expo export --platform all --output-dir dist-ci
+      - name: Exercise controlled build-only web preview helper
+        env:
+          EXPO_PUBLIC_API_URL: http://127.0.0.1:8787
+        run: npm run preview:web
   dependency-security:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

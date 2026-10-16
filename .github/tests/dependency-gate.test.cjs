@@ -44,3 +44,5 @@ test('source CI keeps strict backend audit, pinned actions, read-only permission
   for (const job of Object.values(w.jobs)) for (const step of job.steps) if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/);
   assert.ok(runIndex(w.jobs.regression.steps, 'node --test ../.github/tests/dependency-gate.test.cjs') >= 0, 'The workflow policy tests must actually run in source CI');
 });
+
+test('working source CI automatically validates PRs and main without embedding runtime credentials',()=>{const w=workflow();assert.ok(w.on.pull_request);assert.deepEqual(w.on.push.branches,['main']);assert.ok(w.on.pull_request.paths.includes('passway-app/**'));assert.doesNotMatch(fs.readFileSync(workflowPath,'utf8'),/secrets\./);assert.ok(w.jobs.regression.steps.some(step=>step.run==='npm run preview:web'&&step.env.EXPO_PUBLIC_API_URL==='http://127.0.0.1:8787'));});

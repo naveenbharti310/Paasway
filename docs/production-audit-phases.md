@@ -29,3 +29,9 @@ Residual blockers, explicitly not concealed by green mitigation tests:
 5. Fresh native two-user E2E, signed artifact provenance, licensed Play-installed positive attestation, real production SMS/two-user acceptance and coordinated release.
 
 Within each phase, fix independent confirmed defects together, preserve failing-before evidence, and rerun the phase gate. Do not label external blockers repaired, unexecuted tests passed, or the app bug-free.
+
+### Same-phase follow-up after fresh execution
+
+Source run38923294297 and central38923156272 independently passed488 checks each; source dependency mitigation/conformance gates really executed successfully. The old source-account startup restriction is **no longer observed**, not an active blocker. Restore credential-free automatic PR/main checks now that actual execution works; keep the separate deployed-production gate failed.
+
+An offline Gitleaks8.30.1 scan flagged the public Firebase API identifier hardcoded in web-preview.sh. This was not classified as a proven private-key leak. Inspection found a real unsafe helper configuration: diagnostic App Check off against the live production API, automatic publishing and an unpinned CLI download. The helper now requires explicit public settings and a controlled preview/loopback API, rejects production and release profiles, uses the installed locked Expo CLI, and **builds only**. There is no automatic publication or credential rotation. Its actual shell rejection and configuration cases are tested, and clean source/central CI must exercise the actual controlled build helper. This additional hardening is independently implemented; no new Gemini request was sent after its usage limit.
