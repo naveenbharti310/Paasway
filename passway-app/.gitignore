@@ -6,3 +6,6 @@ assets/*.png
 # Decoded from versioned assets/encoded at npm install
 assets/fonts/*.ttf
 assets/illustrations/*.png
+
+# Raw registry audit and installed-remediation proof
+security-results/
