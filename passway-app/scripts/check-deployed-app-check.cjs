@@ -4,6 +4,7 @@ const fixtures = Object.freeze({
   otpSend: Object.freeze({ phone: 'not-a-phone-number' }),
   otpVerify: Object.freeze({ challengeId: 'invalid', code: 'invalid' }),
   generateTid: Object.freeze({ data: Object.freeze({}) }),
+  getMessages: Object.freeze({ data: Object.freeze({}) }),
 });
 
 function validateTarget(value) {

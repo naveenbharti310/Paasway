@@ -28,7 +28,7 @@ test('deployment gate uses only fixed malformed fixtures without authentication'
     return denied();
   } });
   assert.equal(report.pass, true);
-  assert.equal(requests.length, 6);
+  assert.equal(requests.length, 8);
   for (const request of requests) {
     assert.equal(request.method, 'POST');
     assert.equal(request.redirect, 'error');
@@ -75,4 +75,12 @@ test('preview credentials cannot be forwarded to production', async () => {
     fetchImpl: async () => { called = true; return denied(); },
   }));
   assert.equal(called, false);
+});
+test('deployment gate rejects an absent getMessages endpoint even if the older routes reject App Check correctly', async () => {
+  const report = await runChecks({ fetchImpl: async url => url.endsWith('/getMessages')
+    ? Response.json({ error: { status: 'NOT_FOUND', message: 'Not found' } }, { status: 404 })
+    : denied() });
+  assert.equal(report.pass, false);
+  assert.equal(report.checks.filter(check => check.route === 'getMessages').length, 2);
+  assert.ok(report.checks.some(check => check.route === 'getMessages' && check.status === 404 && !check.pass));
 });
