@@ -16,7 +16,7 @@ const { sendMessage } = require('../lib/handlers/messages');
 const { fileReport, blockUser } = require('../lib/handlers/reports');
 const { closeIdleConnections } = require('../lib/services/connections');
 const { encodeGeohash } = require('../lib/geo');
-const call = (fn, data, uid = 'alice') => fn.run({ auth: { uid }, data });
+const call = (fn, data, uid = 'alice') => fn.run({ auth: { uid, token: { phone_number: "+15555550199" } }, data });
 const collection = (name) => db.collection(name);
 beforeEach(async () => {
   const response = await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-passway/databases/(default)/documents', { method: 'DELETE' });
@@ -591,4 +591,38 @@ for (const policy of ['banned', 'reported']) {
       await assert.doesNotReject(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }));
     }
   });
+}
+
+for (const binding of ['legacy', 'stale']) {
+  for (const action of ['generate', 'redeem', 'accept', 'send', 'read']) {
+    test(`real transactions enforce current verified-phone ban for ${binding} profile ${action}`, async () => {
+      const { phoneHash } = require('../lib/lib/accounts');
+      const { getMessages } = require('../lib/handlers/messages');
+      const phone = '+15555550123';
+      if (binding === 'stale') await collection('users').doc('alice').update({ phoneHash: phoneHash('+15555550124') });
+      await collection('accountHolds').doc(phoneHash(phone)).set({ status: 'banned' });
+      const invoke = (fn, data) => fn.run({ auth: { uid: 'alice', token: { phone_number: phone } }, data });
+      let fn, data;
+      if (action === 'generate') { fn = generateTid; data = { lat: 0, lng: 0, displayName: 'Synthetic Test' }; }
+      if (action === 'redeem') {
+        await seedCode(); await collection('tids').doc('AB12').update({ generatorId: 'bob' });
+        fn = redeemTid; data = { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Synthetic Test' };
+      }
+      if (action === 'accept') {
+        const createdAt = Date.now(), expiresAt = createdAt + 300000;
+        await collection('tids').doc('AB12').set({ tid: 'AB12', status: 'pending', generatorId: 'alice', requestId: 'current-phone-request', createdAt, expiresAt });
+        await collection('connectionRequests').doc('current-phone-request').set({ tid: 'AB12', status: 'pending', generatorId: 'alice', requesterId: 'bob', tidCreatedAt: createdAt, expiresAt });
+        fn = respondToRequest; data = { requestId: 'current-phone-request', accept: true };
+      }
+      if (action === 'send' || action === 'read') {
+        await seedConnection(); fn = action === 'send' ? sendMessage : getMessages;
+        data = { connectionId: 'chat1', ...(action === 'send' ? { content: 'Synthetic test message' } : {}) };
+      }
+      await assert.rejects(invoke(fn, data), { code: 'permission-denied' });
+      if (action === 'generate') assert.equal((await collection('tids').get()).size, 0);
+      if (action === 'redeem') assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+      if (action === 'accept') assert.equal((await collection('connectionRequests').doc('current-phone-request').get()).data().status, 'pending');
+      assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size, 0);
+    });
+  }
 }
