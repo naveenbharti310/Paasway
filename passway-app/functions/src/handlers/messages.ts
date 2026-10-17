@@ -33,15 +33,20 @@ export const sendMessage = authedCallable(async (uid, data, caller) => {
     }
     return { flag: message.moderationFlag, earlyContactShare: message.earlyContactShare === true };
   };
-  // Reject unaccepted, banned or ineligible callers before moderation can
-  // transmit their text to a provider. Recheck again in the commit transaction.
-  await db.runTransaction(async (tx) => {
+  // Reject an unauthorized conversation before moderation can transmit text.
+  // In particular, another connection between these participants may already
+  // carry a person-level block while this connection still says "active".
+  // Keep the complete authorization recheck in the commit transaction too.
+  const initialData = await db.runTransaction(async (tx) => {
     assertContentPolicyConsent(await assertAccountActive(uid, tx, caller));
+    const snap = await tx.get(ref);
+    const connection = snap.data();
+    if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
+    const recipient = otherParticipant(connection as Participants, uid);
+    await assertAccountActive(recipient, tx);
+    await assertNotBlocked(tx, uid, recipient);
+    return connection;
   });
-  const initial = await ref.get();
-  const initialData = initial.data();
-  if (!initial.exists || !initialData || initialData.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
-  otherParticipant(initialData as Participants, uid);
   const existing = key === undefined ? undefined : (await messageRef.get()).data();
   if (!existing && !await withinRateLimit(uid, 'message', MAX_MESSAGES_PER_MINUTE, 60 * 1000)) throw new HttpsError('resource-exhausted', 'You are sending messages too quickly. Try again shortly.');
   const result = existing ? replay(existing) : await screenMessage(content, Math.max(0, (Date.now() - initialData.createdAt) / 1000));

@@ -76,6 +76,7 @@ export const redeemTid = authedCallable(async (uid, data, caller) => {
     }
     if (code.generatorId === uid) throw new HttpsError('invalid-argument', 'You cannot use your own code.');
     const generator = await assertAccountActive(code.generatorId, tx);
+    assertContentPolicyConsent(generator);
     assertSameTestCohort(requester, generator);
     await assertNotBlocked(tx, uid, code.generatorId);
     if (!cellAndNeighbors(code.geoHash).includes(encodeGeohash(lat, lng))) throw new HttpsError('not-found', INACTIVE_CODE);

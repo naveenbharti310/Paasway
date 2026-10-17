@@ -66,6 +66,37 @@ test('redeem and accept complete using real Firestore transactions', async () =>
   const result = await call(respondToRequest, { requestId: request.requestId, accept: true });
   assert.equal((await collection('connections').doc(result.connectionId).get()).data().status, 'active');
 });
+for (const uid of ['alice', 'bob']) test(`real pairing commit rejects ${uid} consent invalidated after redemption`, async () => {
+  await seedCode();
+  const request = await call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob');
+  await collection('users').doc(uid).update({ contentPolicyVersion: 'superseded-policy' });
+  await assert.rejects(call(respondToRequest, { requestId: request.requestId, accept: true }), { code: 'failed-precondition' });
+  assert.equal((await collection('connections').get()).size, 0);
+  assert.equal((await collection('connectionRequests').doc(request.requestId).get()).data().status, 'pending');
+  // A consent failure is never a reason to prevent declining the request.
+  await call(respondToRequest, { requestId: request.requestId, accept: false });
+  assert.equal((await collection('connectionRequests').doc(request.requestId).get()).data().status, 'declined');
+});
+test('real redemption rejects a generator whose consent became stale after code generation', async () => {
+  await seedCode();
+  await collection('users').doc('alice').update({ contentPolicyVersion: 'superseded-policy' });
+  await assert.rejects(call(redeemTid, { tid: 'AB12', lat: 28.6, lng: 77.2, displayName: 'Bob' }, 'bob'), { code: 'failed-precondition' });
+  assert.equal((await collection('connectionRequests').get()).size, 0);
+  assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+});
+test('real person-level block denies a second active conversation before moderation', async () => {
+  await seedConnection();
+  await call(blockUser, { connectionId: 'chat1' }, 'bob');
+  await collection('connections').doc('chat2').set({ connectionId: 'chat2', userA: 'alice', userB: 'bob', status: 'active', createdAt: Date.now() });
+  const moderation = require('../lib/moderation'), original = moderation.screenMessage;
+  let externalCalls = 0;
+  moderation.screenMessage = async () => { externalCalls++; return { flag: 'none', earlyContactShare: false }; };
+  try {
+    await assert.rejects(call(sendMessage, { connectionId: 'chat2', content: 'Blocked conversation must not reach moderation' }), { code: 'not-found' });
+    assert.equal(externalCalls, 0);
+    assert.equal((await collection('connections').doc('chat2').collection('messages').get()).size, 0);
+  } finally { moderation.screenMessage = original; }
+});
 test('a message racing with end is rejected or receives retention', { timeout: 60000 }, async () => {
   await seedConnection();
   await Promise.allSettled([call(sendMessage, { connectionId: 'chat1', content: 'Hello' }), call(endConnection, { connectionId: 'chat1' }, 'bob')]);
