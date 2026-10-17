@@ -82,10 +82,20 @@ test('accept a request and create one connection', async () => { pending(); cons
 test('decline without creating a connection', async () => { pending(); await call(respondToRequest, { requestId: 'req1', accept: false }); assert.equal(db.read('connectionRequests/req1').status, 'declined'); assert.equal([...db.values.keys()].filter((key) => key.startsWith('connections/')).length, 0); });
 test('reject acceptance when either account is banned', async () => { pending(); db.seed('users/bob', { status: 'banned' }); await assert.rejects(call(respondToRequest, { requestId: 'req1', accept: true }), { code: 'permission-denied' }); });
 test('send a bounded message to an active connection', async () => { connection(); const result = await call(sendMessage, { connectionId: 'chat1', content: ' Hello ' }); assert.equal(result.flag, 'none'); assert.equal([...db.values.values()].find((value) => value.messageId)?.content, 'Hello'); });
-test('recheck connection status after the initial message read', async () => {
-  connection(); db.afterRead = (path) => { if (path === 'connections/chat1') db.seed(path, { ...db.read(path), status: 'ended' }); };
-  await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Hello' }), { code: 'failed-precondition' });
-  assert.equal([...db.values.values()].filter((value) => value.messageId).length, 0);
+test('recheck connection status after authorization and moderation, before message commit', async () => {
+  connection();
+  const original = moderation.screenMessage;
+  let calls = 0;
+  moderation.screenMessage = async () => {
+    calls++;
+    db.seed('connections/chat1', { ...db.read('connections/chat1'), status: 'ended' });
+    return { flag: 'none', earlyContactShare: false };
+  };
+  try {
+    await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Hello' }), { code: 'failed-precondition' });
+    assert.equal(calls, 1, 'Exercise the actual boundary between preflight and commit');
+    assert.equal([...db.values.values()].filter((value) => value.messageId).length, 0);
+  } finally { moderation.screenMessage = original; }
 });
 test('reject messages from banned accounts', async () => { connection(); db.seed('users/alice', { status: 'banned' }); await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Hello' }), { code: 'permission-denied' }); });
 test('reject reporting an unrelated account', async () => { connection(); await assert.rejects(call(fileReport, { connectionId: 'chat1', reportedId: 'charlie', reason: 'Spam' }), { code: 'invalid-argument' }); });

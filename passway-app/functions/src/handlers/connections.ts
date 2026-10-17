@@ -3,6 +3,7 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { assertAccountActive, assertSameTestCohort } from '../lib/accounts';
+import { assertContentPolicyConsent } from '../lib/contentPolicy';
 import { assertNotBlocked } from '../lib/blocks';
 import { documentId, isUnexpiredMillis } from '../lib/validation';
 import { connectionRef, endConnectionAs } from '../services/connections';
@@ -28,6 +29,8 @@ export const respondToRequest = authedCallable(async (uid, data, caller) => {
       }
       const generator = await assertAccountActive(uid, tx, caller);
       const requester = await assertAccountActive(pending.requesterId, tx);
+      assertContentPolicyConsent(generator);
+      assertContentPolicyConsent(requester);
       assertSameTestCohort(generator, requester);
       await assertNotBlocked(tx, uid, pending.requesterId);
       return { connectionId: pending.connectionId };
@@ -46,6 +49,10 @@ export const respondToRequest = authedCallable(async (uid, data, caller) => {
       if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
       const generator = await assertAccountActive(uid, tx, caller);
       const requester = await assertAccountActive(pending.requesterId, tx);
+      // Generating/redeeming a code is not a durable authorization to create
+      // a connection later. Revalidate both profiles at the commit boundary.
+      assertContentPolicyConsent(generator);
+      assertContentPolicyConsent(requester);
       assertSameTestCohort(generator, requester);
       await assertNotBlocked(tx, uid, pending.requesterId);
       tx.create(newConnectionRef, { connectionId: newConnectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, status: 'active', createdAt: now, lastActivityAt: now });

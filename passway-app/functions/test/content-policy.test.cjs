@@ -7,7 +7,8 @@ const firebase=require('../lib/lib/firebase');
 const {acceptContentPolicy}=require('../lib/handlers/contentPolicy');
 const {generateTid,redeemTid}=require('../lib/handlers/tids');
 const {sendMessage,getMessages}=require('../lib/handlers/messages');
-const {endConnection}=require('../lib/handlers/connections');
+const {endConnection,respondToRequest}=require('../lib/handlers/connections');
+const {encodeGeohash}=require('../lib/geo');
 const {CONTENT_POLICY_VERSION:version,hasContentPolicyConsent}=require('../lib/lib/contentPolicy');
 const {runCallable}=require('../lib/lib/callable');
 const originalFetch=global.fetch;
@@ -37,4 +38,64 @@ test('commit rechecks consent if policy changes during moderation',async()=>{
  await call(acceptContentPolicy,{version,accept:true});
  moderation.screenMessage=async()=>{db.seed('users/alice',{...db.read('users/alice'),contentPolicyVersion:'stale'});return {flag:'none',earlyContactShare:false};};
  try {await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Synthetic text',clientMessageId:'consent-recheck-intent-0001'}),{code:'failed-precondition'});assert.equal([...db.values.keys()].filter(p=>/\/messages\//.test(p)).length,0);}finally{moderation.screenMessage=original;}
+});
+function accepted(uid) {
+ db.seed(`users/${uid}`,{status:'active',ageConfirmedAt:1,contentPolicyVersion:version,contentPolicyAcceptedAt:1});
+}
+function pending() {
+ const createdAt=Date.now(),expiresAt=createdAt+300000;
+ db.seed('tids/AB12',{tid:'AB12',generatorId:'alice',generatorName:'Alice',geoHash:encodeGeohash(0,0),status:'pending',requestId:'request1',createdAt,expiresAt});
+ db.seed('connectionRequests/request1',{requestId:'request1',tid:'AB12',tidCreatedAt:createdAt,generatorId:'alice',generatorName:'Alice',requesterId:'bob',requesterName:'Bob',status:'pending',expiresAt});
+}
+for(const uid of ['alice','bob'])for(const stale of [false,true])test(`pairing commit rechecks ${uid} ${stale?'stale':'missing'} consent after redemption`,async()=>{
+ accepted('alice');accepted('bob');pending();
+ db.seed(`users/${uid}`,{status:'active',ageConfirmedAt:1,...(stale?{contentPolicyVersion:'old',contentPolicyAcceptedAt:1}:{})});
+ await assert.rejects(call(respondToRequest,{requestId:'request1',accept:true}),{code:'failed-precondition'});
+ assert.equal(db.read('connectionRequests/request1').status,'pending');assert.equal(db.read('tids/AB12').status,'pending');
+ assert.equal([...db.values.keys()].filter(p=>p.startsWith('connections/')).length,1);
+});
+for(const uid of ['alice','bob'])test(`accepted-decision recovery rejects stale ${uid} consent without changing connection`,async()=>{
+ accepted('alice');accepted('bob');pending();
+ db.seed('connectionRequests/request1',{...db.read('connectionRequests/request1'),status:'accepted',connectionId:'chat1'});
+ db.seed(`users/${uid}`,{...db.read(`users/${uid}`),contentPolicyVersion:'old'});
+ await assert.rejects(call(respondToRequest,{requestId:'request1',accept:true}),{code:'failed-precondition'});
+ assert.equal(db.read('connections/chat1').status,'active');
+});
+test('missing consent never blocks declining a pending request',async()=>{
+ pending();await call(respondToRequest,{requestId:'request1',accept:false});
+ assert.equal(db.read('connectionRequests/request1').status,'declined');
+});
+test('redemption rechecks the generators consent, not just the requester',async()=>{
+ accepted('bob');pending();db.seed('tids/AB12',{...db.read('tids/AB12'),status:'active'});
+ await assert.rejects(runCallable(redeemTid.handler,{uid:'bob',token:{phone_number:'+15555550124'}},{tid:'AB12',lat:0,lng:0,displayName:'Bob'}),{code:'failed-precondition'});
+ assert.equal(db.read('tids/AB12').status,'active');
+});
+for(const restriction of ['banned','deleting','under_minimum','block-alice','block-bob'])test(`ineligible recipient ${restriction} is rejected before external moderation`,async()=>{
+ accepted('alice');accepted('bob');
+ if(restriction==='under_minimum')db.seed('users/bob',{...db.read('users/bob'),ageCheck:'under_minimum'});
+ else if(restriction.startsWith('block-')) {
+  const blocker=restriction.slice(6),blocked=blocker==='alice'?'bob':'alice';
+  db.seed(`blocks/${blocker}:${blocked}`,{blockerId:blocker,blockedId:blocked});
+ }else db.seed('users/bob',{...db.read('users/bob'),status:restriction});
+ const moderation=require('../lib/moderation'),original=moderation.screenMessage;let calls=0;
+ moderation.screenMessage=async()=>{calls++;return {flag:'none',earlyContactShare:false};};
+ try{
+  await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Do not transmit unauthorized content',clientMessageId:'preflight-recipient-intent-0001'}));
+  assert.equal(calls,0,'A denied recipient or person-level block must be checked before a provider sees text');
+  assert.equal([...db.values.keys()].filter(p=>p.includes('/messages/')).length,0);
+ }finally{moderation.screenMessage=original;}
+});
+for(const change of ['block','ban'])test(`message commit rechecks a recipient ${change} added during moderation`,async()=>{
+ accepted('alice');accepted('bob');
+ const moderation=require('../lib/moderation'),original=moderation.screenMessage;let calls=0;
+ moderation.screenMessage=async()=>{
+  calls++;
+  if(change==='block')db.seed('blocks/bob:alice',{blockerId:'bob',blockedId:'alice'});
+  else db.seed('users/bob',{...db.read('users/bob'),status:'banned'});
+  return {flag:'none',earlyContactShare:false};
+ };
+ try{
+  await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Authorization changed during moderation',clientMessageId:'commit-recipient-intent-0001'}));
+  assert.equal(calls,1);assert.equal([...db.values.keys()].filter(p=>p.includes('/messages/')).length,0);
+ }finally{moderation.screenMessage=original;}
 });
