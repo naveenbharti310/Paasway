@@ -13,6 +13,7 @@ import Button from '../../../components/Button';
 import HeroIllustration from '../../../components/HeroIllustration';
 import TrustLine from '../../../components/TrustLine';
 import Brand from '../../../components/Brand';
+import PrivacyLinks from '../../../components/PrivacyLinks';
 import { diagnosticsEnabled } from '../../../services/diagnostics';
 
 // Passway is only open to Indian numbers for now. Accepts 98765 43210,
@@ -106,6 +107,7 @@ export default function PhoneAuthScreen() {
             <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { if (authInFlight.current) return; setConfirmation(null); setCode(''); setError(null); }} />
           </>
         )}
+        <PrivacyLinks />
     </FormScreen>
   );
 }

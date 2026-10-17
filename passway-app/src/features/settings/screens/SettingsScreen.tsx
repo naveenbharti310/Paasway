@@ -12,6 +12,7 @@ import LabeledField from '../../../components/LabeledField';
 import Button from '../../../components/Button';
 import BottomNav from '../../../components/BottomNav';
 import TrustLine from '../../../components/TrustLine';
+import PrivacyLinks from '../../../components/PrivacyLinks';
 
 const SAFETY_TIPS = [
   'Never share a one time password, PIN or bank details, even with someone you have met.',
@@ -160,6 +161,7 @@ export default function SettingsScreen() {
         <Text selectable style={styles.helper} testID="support-contact">{SUPPORT_EMAIL}</Text>
         <Button label="Email support" variant="secondary" onPress={handleSupport} loading={openingSupport} disabled={openingSupport} testID="email-support" />
         {supportMessage && <Text accessibilityRole="alert" style={styles.error} testID="support-error">{supportMessage}</Text>}
+        <PrivacyLinks />
       </View>
     </ScrollView><BottomNav active="you" /></View>
   );
