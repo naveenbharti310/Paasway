@@ -37,6 +37,17 @@ export async function beginPhoneSignIn(phone: string): Promise<PhoneConfirmation
     return signInWithPhoneNumber(auth, phone);
   }
   auth.settings.appVerificationDisabledForTesting = false;
+  // These two reserved, preconfigured Firebase fictional numbers are also
+  // dedicated Google Play reviewer accounts. Firebase validates their private
+  // Console-configured credentials; no code or custom verifier is bundled.
+  // Unlike diagnostics, release reviewers keep native app verification on.
+  // Ordinary users still use the build-selected provider with no error fallback.
+  if (diagnosticPhones.has(phone)) {
+    return withDeadline(async () => {
+      const confirmation = await signInWithPhoneNumber(auth, phone);
+      return { confirm: (code: string) => withDeadline(async () => confirmation.confirm(code)) };
+    });
+  }
   // Provider is selected per build. Switching later retains the phone-based UID.
   // Firebase remains the fallback for an unset build setting, not provider errors.
   if (!usesTwoFactorSms) return signInWithPhoneNumber(auth, phone);
