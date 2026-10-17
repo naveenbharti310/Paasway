@@ -118,3 +118,8 @@ test('native Linking rejection is caught through the real screen and helper', as
   assert.doesNotMatch(h.texts(), /Native private error/);
   assert.equal(h.find('email-support').props.loading, false);
 });
+test('settings safety guidance describes account blocking without a permanent person-level promise', () => {
+  const h = harness('features/settings/screens/SettingsScreen.tsx');
+  assert.match(h.texts(), /Reporting closes the chat and blocks that account from reconnecting with you\./);
+  assert.doesNotMatch(h.texts(), /They will not be able to connect with you again|never reconnect|permanently blocked/i);
+});

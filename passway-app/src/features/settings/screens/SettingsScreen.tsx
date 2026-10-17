@@ -17,7 +17,7 @@ const SAFETY_TIPS = [
   'Never share a one time password, PIN or bank details, even with someone you have met.',
   'Be careful with anyone who asks for money, gift cards or crypto, or who wants you to install an app.',
   'Take your time before moving to another app or sharing your number.',
-  'If something feels wrong, end the chat and report it. They will not be able to connect with you again.',
+  'End the chat and report it if something feels wrong. Reporting closes the chat and blocks that account from reconnecting with you.',
 ];
 
 export default function SettingsScreen() {
