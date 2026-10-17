@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const docs=path.join(__dirname,'../../docs');
-for(const name of ['index.html','privacy.html','delete-account.html'])test(`${name} is accessible static support content without trackers or forms`,()=>{
+for(const name of ['index.html','privacy.html','delete-account.html','use-rules.html'])test(`${name} is accessible static support content without trackers or forms`,()=>{
  const s=fs.readFileSync(path.join(docs,name),'utf8');
  assert.match(s,/<!doctype html>/i);assert.match(s,/<html lang="en">/);assert.match(s,/name="viewport"/);
  assert.match(s,/<h1>/);assert.match(s,/LIMERENCE TECHNOLOGIES PRIVATE LIMITED/);assert.match(s,/Limerencetechnologies@gmail\.com/);

@@ -28,7 +28,7 @@ test('deployment gate uses only fixed malformed fixtures without authentication'
     return denied();
   } });
   assert.equal(report.pass, true);
-  assert.equal(requests.length, 26);
+  assert.equal(requests.length, 28);
   for (const request of requests) {
     assert.equal(request.method, 'POST');
     assert.equal(request.redirect, 'error');
@@ -97,7 +97,7 @@ test('production monitor covers every exported callable, not triggers or legacy 
     [...fs.readFileSync(path.join(root, 'handlers', file), 'utf8')
       .matchAll(/export const (\w+)\s*=\s*authedCallable\(/g)].map(match => match[1]))
     .filter(name => exported.includes(name));
-  assert.equal(callables.length, 11);
+  assert.equal(callables.length, 12);
   const report = await runChecks({ fetchImpl: async () => denied() });
   assert.deepEqual([...new Set(report.checks.map(check => check.route))].sort(),
     [...callables, 'otpSend', 'otpVerify'].sort());
@@ -121,8 +121,8 @@ test('monitor bounds concurrency and preserves complete deterministic results', 
   } });
   assert.ok(maximum > 1, 'independent probes must not run serially');
   assert.ok(maximum <= 4, 'production probes must not flood the service');
-  assert.equal(requests.length, 26);
-  assert.equal(report.checks.length, 26);
+  assert.equal(requests.length, 28);
+  assert.equal(report.checks.length, 28);
   assert.equal(report.pass, true);
   assert.deepEqual(report.checks.slice(0, 2).map(c => [c.route, c.token]),
     [['otpSend', 'missing'], ['otpSend', 'invalid']]);

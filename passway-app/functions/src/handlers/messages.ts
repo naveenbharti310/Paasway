@@ -3,6 +3,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { assertAccountActive, userRef } from '../lib/accounts';
+import { assertContentPolicyConsent } from '../lib/contentPolicy';
 import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { documentId, text, otherParticipant, type Participants } from '../lib/validation';
@@ -32,6 +33,11 @@ export const sendMessage = authedCallable(async (uid, data, caller) => {
     }
     return { flag: message.moderationFlag, earlyContactShare: message.earlyContactShare === true };
   };
+  // Reject unaccepted, banned or ineligible callers before moderation can
+  // transmit their text to a provider. Recheck again in the commit transaction.
+  await db.runTransaction(async (tx) => {
+    assertContentPolicyConsent(await assertAccountActive(uid, tx, caller));
+  });
   const initial = await ref.get();
   const initialData = initial.data();
   if (!initial.exists || !initialData || initialData.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
@@ -41,6 +47,7 @@ export const sendMessage = authedCallable(async (uid, data, caller) => {
   const result = existing ? replay(existing) : await screenMessage(content, Math.max(0, (Date.now() - initialData.createdAt) / 1000));
   const committed = await db.runTransaction(async (tx) => {
     const sender = await assertAccountActive(uid, tx, caller);
+    assertContentPolicyConsent(sender);
     const snap = await tx.get(ref);
     const connection = snap.data();
     if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);

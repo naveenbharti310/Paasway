@@ -29,6 +29,7 @@ export default function PrivacyLinks() {
   }
 
   return <View style={styles.container}>
+    <Button label="Passway use rules" variant="ghost" testID="use-rules" loading={opening === 'rules'} disabled={opening !== null} onPress={() => open('rules')} />
     <Button label="Privacy notice" variant="ghost" testID="privacy-notice" loading={opening === 'privacy'} disabled={opening !== null} onPress={() => open('privacy')} />
     <Button label="Account deletion information" variant="ghost" testID="deletion-information" loading={opening === 'deletion'} disabled={opening !== null} onPress={() => open('deletion')} />
     {error && <Text selectable accessibilityRole="alert" style={styles.error} testID="public-document-error">{error}</Text>}

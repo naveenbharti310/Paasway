@@ -21,7 +21,7 @@ const collection = (name) => db.collection(name);
 beforeEach(async () => {
   const response = await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-passway/databases/(default)/documents', { method: 'DELETE' });
   assert.equal(response.ok, true);
-  await Promise.all(['alice', 'bob', 'carol'].map((uid) => collection('users').doc(uid).set({ userId: uid, status: 'active', createdAt: Date.now(), ageConfirmedAt: Date.now() })));
+  await Promise.all(['alice', 'bob', 'carol'].map((uid) => collection('users').doc(uid).set({ userId: uid, status: 'active', createdAt: Date.now(), ageConfirmedAt: Date.now(), contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: Date.now() })));
 });
 afterEach(() => { codeGenerator.randomTid = originalRandom; });
 after(async () => { await db.terminate(); await Promise.all(getApps().map((app) => app.delete())); });
@@ -646,4 +646,22 @@ test('real transactions permit two recreated reviewer bindings without UID flags
   const request=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');
   const result=await call(respondToRequest,{requestId:request.requestId,accept:true});
   assert.equal((await collection('connections').doc(result.connectionId).get()).data().status,'active');
+});
+
+test('real transactions require explicit current policy acceptance before pairing or messages',async()=>{
+ const {acceptContentPolicy}=require('../lib/handlers/contentPolicy');
+ const {CONTENT_POLICY_VERSION:version}=require('../lib/lib/contentPolicy');
+ await seedConnection();
+ await collection('users').doc('alice').update({contentPolicyVersion:'old',contentPolicyAcceptedAt:1});
+ await assert.rejects(call(generateTid,{lat:28.6,lng:77.2,displayName:'Alice'}),{code:'failed-precondition'});
+ await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Synthetic blocked text'}),{code:'failed-precondition'});
+ assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,0);
+ await assert.rejects(call(acceptContentPolicy,{version,accept:false}),{code:'invalid-argument'});
+ await call(acceptContentPolicy,{version,accept:true});
+ const first=(await collection('users').doc('alice').get()).data().contentPolicyAcceptedAt;
+ await call(acceptContentPolicy,{version,accept:true});
+ assert.equal((await collection('users').doc('alice').get()).data().contentPolicyAcceptedAt,first);
+ await call(generateTid,{lat:28.6,lng:77.2,displayName:'Alice'});
+ await call(sendMessage,{connectionId:'chat1',content:'Synthetic accepted text'});
+ assert.equal((await collection('connections').doc('chat1').collection('messages').get()).size,1);
 });
