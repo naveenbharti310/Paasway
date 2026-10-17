@@ -10,7 +10,7 @@ const fixtures = Object.freeze({
   ...Object.fromEntries([
     'generateTid', 'redeemTid', 'deactivateTid', 'respondToRequest',
     'endConnection', 'sendMessage', 'getMessages', 'fileReport', 'blockUser',
-    'confirmAge', 'deleteAccount',
+    'confirmAge', 'deleteAccount', 'acceptContentPolicy',
   ].map(name => [name, Object.freeze({ data: Object.freeze({}) })])),
 });
 

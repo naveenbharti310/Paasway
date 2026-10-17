@@ -1,5 +1,5 @@
 import { errorMessage } from '../../../services/errors';
-import { PHONE_USE_DISCLOSURE } from '../../../services/support';
+import { PHONE_USE_DISCLOSURE, PHONE_AUTH_CONSENT } from '../../../services/support';
 import { useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import FormScreen from '../../../components/FormScreen';
@@ -91,6 +91,7 @@ export default function PhoneAuthScreen() {
             )}
             <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+            <Text style={styles.notice} testID="phone-auth-consent">{PHONE_AUTH_CONSENT}</Text>
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
             <TrustLine label="Never shown to people you connect with." />
             <Text style={styles.notice}>Passway is for people aged 18 and over.</Text>

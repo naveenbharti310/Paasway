@@ -7,9 +7,9 @@ function documents(deadline=work=>work()){
  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/services/publicDocuments.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{module:m,exports:m.exports,require:n=>{assert.equal(n,'./withDeadline');return{withDeadline:deadline}}});return m.exports;
 }
 test('privacy and deletion pages are fixed HTTPS URLs without identity or query parameters',()=>{
- const d=documents();for(const [key,value]of Object.entries(d.PUBLIC_DOCUMENTS)){const u=new URL(value);assert.equal(u.origin,'https://naveenbharti310.github.io');assert.equal(u.search,'');assert.equal(u.hash,'');assert.equal(u.pathname,`/Paasway/${key==='privacy'?'privacy':'delete-account'}.html`);}assert.equal(Object.isFrozen(d.PUBLIC_DOCUMENTS),true);
+ const d=documents();for(const [key,value]of Object.entries(d.PUBLIC_DOCUMENTS)){const u=new URL(value);assert.equal(u.origin,'https://naveenbharti310.github.io');assert.equal(u.search,'');assert.equal(u.hash,'');assert.equal(u.pathname,`/Paasway/${({privacy:'privacy',deletion:'delete-account',rules:'use-rules'})[key]}.html`);}assert.equal(Object.isFrozen(d.PUBLIC_DOCUMENTS),true);
 });
-for(const key of ['privacy','deletion'])test(`actual ${key} action opens only its allowlisted URL`,async()=>{
+for(const key of ['privacy','deletion','rules'])test(`actual ${key} action opens only its allowlisted URL`,async()=>{
  const d=documents(),urls=[];const x=await d.openPublicDocument(key,async u=>urls.push(u));assert.equal(x.opened,true);assert.deepEqual(urls,[d.PUBLIC_DOCUMENTS[key]]);
 });
 test('untrusted document keys cannot become URL or prototype lookups',async()=>{

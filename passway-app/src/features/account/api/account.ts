@@ -2,6 +2,7 @@ import { withDeadline } from '../../../services/withDeadline';
 import { callable } from '../../../firebase/client';
 import type { ConfirmAgeRequest, ConfirmAgeResponse, Empty } from '../../../types/contracts';
 
+export const acceptContentPolicy = callable<{ version: string; accept: true }, { accepted: boolean; version: string }>('acceptContentPolicy');
 export const confirmAge = callable<ConfirmAgeRequest, ConfirmAgeResponse>('confirmAge');
 const deleteStep = callable<Empty, { pending?: boolean }>('deleteAccount');
 // Bounded client recovery. The durable server job continues through maintenance

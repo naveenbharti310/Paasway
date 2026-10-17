@@ -123,3 +123,5 @@ test('settings safety guidance describes account blocking without a permanent pe
   assert.match(h.texts(), /Reporting closes the chat and blocks that account from reconnecting with you\./);
   assert.doesNotMatch(h.texts(), /They will not be able to connect with you again|never reconnect|permanently blocked/i);
 });
+
+test('explicit send action discloses Firebase phone abuse processing before requesting SMS',()=>{const disclosure=support().PHONE_AUTH_CONSENT;for(const text of ['By choosing Send code','2Factor','Firebase Authentication (Google)','store and use it','across Google services'])assert.ok(disclosure.includes(text));const screen=fs.readFileSync('src/features/auth/screens/PhoneAuthScreen.tsx','utf8');assert.ok(screen.indexOf('{PHONE_AUTH_CONSENT}')<screen.indexOf('<Button label="Send code"'));});

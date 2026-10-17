@@ -32,7 +32,7 @@ function pending(extras = {}) {
   db.seed('connectionRequests/req1', { requestId: 'req1', tid: 'AB12', tidCreatedAt: createdAt, expiresAt: Date.now() + 300000, status: 'pending', generatorId: uid, generatorName: 'Alice', requesterId: other, requesterName: 'Bob', ...extras });
 }
 beforeEach(() => {
-  db = new MemoryFirestore().seed('users/alice', { status: 'active', ageConfirmedAt: 1 }).seed('users/bob', { status: 'active', ageConfirmedAt: 1 });
+  db = new MemoryFirestore().seed('users/alice', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1 }).seed('users/bob', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1 });
   firebase.db = db;
 });
 afterEach(() => { codeGenerator.randomTid = originalRandomTid; global.fetch = originalFetch; });
@@ -164,7 +164,7 @@ test('messages expire on their own and record connection activity', async () => 
 });
 test('a message notifies the other participant without its content', async () => {
   connection();
-  db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, pushToken: 'ExponentPushToken[bob]' });
+  db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, pushToken: 'ExponentPushToken[bob]' });
   const sent = [];
   global.fetch = async (_url, init) => { sent.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ data: { status: 'ok' } }) }; };
   await call(sendMessage, { connectionId: 'chat1', content: 'Secret plan' });
@@ -213,7 +213,7 @@ for (const status of ['under_minimum', 'suspended', 'banned']) {
   test(`reporting preserves an existing restrictive ${status} phone hold exactly`, async () => {
     connection();
     const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
-    db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, phoneHash: 'held-bob' });
+    db.seed('users/bob', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash: 'held-bob' });
     db.seed('accountHolds/held-bob', hold);
     const result = await call(fileReport, { connectionId: 'chat1', reportedId: 'bob', reason: 'Unsafe' });
     assert.ok(db.read(`reports/${result.reportId}`));
@@ -225,7 +225,7 @@ for (const status of ['under_minimum', 'suspended', 'banned']) {
     const originalAuth = firebase.auth;
     firebase.auth = { deleteUser: async () => {} };
     const hold = { status, updatedAt: 123, deleteAt: new Date(Date.now() + 10 * 86400000) };
-    db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: 'held-alice' });
+    db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash: 'held-alice' });
     db.seed('accountHolds/held-alice', hold);
     try {
       assert.deepEqual(await call(deleteAccount, {}), { pending: false });
@@ -287,7 +287,7 @@ test('a new account on a banned phone is banned', async () => {
 });
 test('a ban hold on the phone stops an account even if its status was not copied', async () => {
   db.seed('accountHolds/h1', { status: 'banned' });
-  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, phoneHash: 'h1' });
+  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash: 'h1' });
   await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'permission-denied' });
 });
 
@@ -307,7 +307,7 @@ test('delete an account, end its chats and deactivate its codes', async () => {
 });
 test('deleting a reported account leaves a review hold on the phone', async () => {
   fakeAuth();
-  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1 });
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1 });
   await callWithPhone(deleteAccount, {}, uid);
   assert.equal(db.read(`accountHolds/${accounts.phoneHash('+919876543210')}`).status, 'reported');
 });
@@ -315,7 +315,7 @@ test('deleting an account never lowers a ban hold', async () => {
   fakeAuth();
   const hash = accounts.phoneHash('+919876543210');
   db.seed(`accountHolds/${hash}`, { status: 'banned' });
-  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: hash });
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash: hash });
   await callWithPhone(deleteAccount, {}, uid);
   assert.equal(db.read(`accountHolds/${hash}`).status, 'banned');
 });
@@ -362,7 +362,7 @@ test('three flagged messages put the sender under review', async () => {
 });
 test('a flagged message does not lower a ban', async () => {
   connection();
-  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, flagCount: 5 });
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, flagCount: 5 });
   await call(sendMessage, { connectionId: 'chat1', content: 'Share the OTP and send money to my UPI' });
   assert.equal(db.read('users/alice').status, 'reported');
 });
@@ -438,18 +438,18 @@ test('invalid message retry keys fail before writes',async()=>{
   assert.equal([...db.values.values()].filter(v=>v.messageId).length,0);
 });
 test('replaying a delivered message does not send another push',async()=>{
-  connection();db.seed('users/bob',{status:'active',ageConfirmedAt:1,pushToken:'ExpoPushToken[test-only]'});let sends=0;global.fetch=async()=>{sends++;return new Response('{"data":{"status":"ok"}}')};
+  connection();db.seed('users/bob',{status:'active',ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1,pushToken:'ExpoPushToken[test-only]'});let sends=0;global.fetch=async()=>{sends++;return new Response('{"data":{"status":"ok"}}')};
   const data={connectionId:'chat1',content:'Hello',clientMessageId:'retry-key-00000005'};await call(sendMessage,data);await call(sendMessage,data);assert.equal(sends,1);
 });
 
 for(const status of ['suspended','',undefined,null,42]){
- test('unknown account authorization state is denied: '+String(status),async()=>{connection();db.seed('users/alice',{status,ageConfirmedAt:1});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal([...db.values.values()].filter(x=>x.messageId).length,0);});
+ test('unknown account authorization state is denied: '+String(status),async()=>{connection();db.seed('users/alice',{status,ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'permission-denied'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'permission-denied'});assert.equal([...db.values.values()].filter(x=>x.messageId).length,0);});
 }
 for(const ageConfirmedAt of [NaN,Infinity,0,-1]){
  test('invalid age confirmation cannot authorize participation: '+String(ageConfirmedAt),async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt});await assert.rejects(call(sendMessage,{connectionId:'chat1',content:'Must not send'}),{code:'failed-precondition'});});
 }
-test('under-minimum state wins over stale age-confirmation metadata',async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt:1,ageCheck:'under_minimum'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'failed-precondition'});});
-test('reviewed accounts remain eligible until an explicit ban',async()=>{connection();db.seed('users/alice',{status:'reported',ageConfirmedAt:1});await assert.doesNotReject(call(sendMessage,{connectionId:'chat1',content:'Permitted reviewed account'}));});
+test('under-minimum state wins over stale age-confirmation metadata',async()=>{connection();db.seed('users/alice',{status:'active',ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1,ageCheck:'under_minimum'});await assert.rejects(call(getMessages,{connectionId:'chat1'}),{code:'failed-precondition'});});
+test('reviewed accounts remain eligible until an explicit ban',async()=>{connection();db.seed('users/alice',{status:'reported',ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1});await assert.doesNotReject(call(sendMessage,{connectionId:'chat1',content:'Permitted reviewed account'}));});
 
 for (const ageConfirmedAt of [NaN, Infinity, 0, -1]) {
   test('age confirmation repairs invalid numeric metadata: ' + String(ageConfirmedAt), async () => {
@@ -463,14 +463,14 @@ for (const ageConfirmedAt of [NaN, Infinity, 0, -1]) {
 test('an under-minimum phone hold overrides a stale adult confirmation', async () => {
   const phoneHash = accounts.phoneHash('+919876543210');
   db.seed(`accountHolds/${phoneHash}`, { status: 'under_minimum' });
-  db.seed('users/carol', { status: 'active', ageConfirmedAt: 1, phoneHash });
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash });
   assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { confirmed: false });
   assert.equal(db.read('users/carol').ageCheck, 'under_minimum');
 });
 test('an under-minimum phone hold denies participation despite stale adult metadata', async () => {
   connection();
   db.seed('accountHolds/held-phone', { status: 'under_minimum' });
-  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, phoneHash: 'held-phone' });
+  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash: 'held-phone' });
   await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'failed-precondition' });
   await assert.rejects(call(sendMessage, { connectionId: 'chat1', content: 'Must not send' }), { code: 'failed-precondition' });
   await assert.rejects(call(getMessages, { connectionId: 'chat1' }), { code: 'failed-precondition' });
@@ -480,13 +480,13 @@ test('unknown phone-hold policies fail closed during age confirmation and partic
   connection();
   const phoneHash = accounts.phoneHash('+919876543210');
   db.seed(`accountHolds/${phoneHash}`, { status: 'suspended' });
-  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, phoneHash });
+  db.seed('users/alice', { status: 'active', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash });
   await assert.rejects(callWithPhone(confirmAge, { birthDate: adultBirth }, 'alice'), { code: 'permission-denied' });
   await assert.rejects(call(getMessages, { connectionId: 'chat1' }), { code: 'permission-denied' });
 });
 for (const status of ['banned', 'suspended', undefined]) {
   test('ineligible account cannot use age confirmation to advance onboarding: ' + String(status), async () => {
-    db.seed('users/carol', { status, ageConfirmedAt: 1 });
+    db.seed('users/carol', { status, ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1 });
     await assert.rejects(callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { code: 'permission-denied' });
     assert.equal(db.read('users/carol').ageCheck, undefined);
   });
@@ -494,7 +494,7 @@ for (const status of ['banned', 'suspended', undefined]) {
 test('a phone hold awaiting review is not incorrectly treated as a ban', async () => {
   connection();
   db.seed('accountHolds/reviewed-phone', { status: 'reported' });
-  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, phoneHash: 'reviewed-phone' });
+  db.seed('users/alice', { status: 'reported', ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1, phoneHash: 'reviewed-phone' });
   await assert.doesNotReject(call(getMessages, { connectionId: 'chat1' }));
 });
 

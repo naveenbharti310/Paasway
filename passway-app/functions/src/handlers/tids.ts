@@ -3,6 +3,7 @@ import { HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/firebase';
 import { authedCallable } from '../lib/callable';
 import { assertAccountActive, assertSameTestCohort } from '../lib/accounts';
+import { assertContentPolicyConsent } from '../lib/contentPolicy';
 import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { randomTid } from '../lib/tid';
@@ -23,7 +24,7 @@ export const generateTid = authedCallable(async (uid, data, caller) => {
     const tid = randomTid();
     const ref = db.collection('tids').doc(tid);
     const result = await db.runTransaction(async (tx) => {
-      await assertAccountActive(uid, tx, caller);
+      assertContentPolicyConsent(await assertAccountActive(uid, tx, caller));
       const existing = await tx.get(ref);
       if (existing.exists) return null;
       const createdAt = Date.now();
@@ -56,6 +57,7 @@ export const redeemTid = authedCallable(async (uid, data, caller) => {
     : db.collection('connectionRequests').doc(createHash('sha256').update(`${uid}\0${redemptionId}`).digest('hex'));
   const result = await db.runTransaction(async (tx) => {
     const requester = await assertAccountActive(uid, tx, caller);
+    assertContentPolicyConsent(requester);
     const prior = redemptionId === undefined ? undefined : (await tx.get(requestRef)).data();
     const code = (await tx.get(tidRef)).data();
     const now = Date.now();

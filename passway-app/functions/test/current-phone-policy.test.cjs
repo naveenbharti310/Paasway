@@ -31,8 +31,8 @@ beforeEach(() => {
 });
 afterEach(() => { firebase.auth.verifyIdToken=oldVerify; global.fetch=oldFetch; });
 function seed(binding='legacy', status, flow='generateTid') {
- db.seed(`users/${actor}`, {status:'active',ageConfirmedAt:1,...(binding==='legacy'?{}:{phoneHash:binding==='matching'?hash:oldHash})});
- db.seed(`users/${peer}`, {status:'active',ageConfirmedAt:1});
+ db.seed(`users/${actor}`, {status:'active',ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1,...(binding==='legacy'?{}:{phoneHash:binding==='matching'?hash:oldHash})});
+ db.seed(`users/${peer}`, {status:'active',ageConfirmedAt: 1, contentPolicyVersion: '2026-10-17.1', contentPolicyAcceptedAt: 1});
  if (status!==undefined) db.seed(`accountHolds/${hash}`,{status});
  const createdAt=Date.now(), expiresAt=createdAt+300000;
  if(flow==='redeemTid') db.seed('tids/AB12',{tid:'AB12',status:'active',generatorId:peer,generatorName:'Peer',geoHash:encodeGeohash(0,0),createdAt,expiresAt});

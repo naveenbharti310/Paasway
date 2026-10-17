@@ -1,7 +1,8 @@
 import { doc, runTransaction } from '@react-native-firebase/firestore';
+import { hasContentPolicyConsent } from '../../../services/contentPolicy';
 import { db } from '../../../firebase/client';
 
-export type AccountStage = 'needs_age' | 'under_minimum' | 'deleting' | 'ready';
+export type AccountStage = 'needs_age' | 'under_minimum' | 'deleting' | 'needs_policy' | 'ready';
 
 // Creates the profile on first sign in and reports which step the account is at.
 // The transaction needs a connection, so a brief network drop when the app
@@ -28,8 +29,9 @@ function loadStage(uid: string): Promise<AccountStage> {
     }
     const data = snap.data() ?? {};
     if (data.status === 'deleting') return 'deleting' as const;
-    if (data.status === 'banned') throw new Error('This account cannot use Passway right now.');
+    if (data.status !== 'active' && data.status !== 'reported') throw new Error('This account cannot use Passway right now.');
     if (data.ageCheck === 'under_minimum') return 'under_minimum' as const;
-    return typeof data.ageConfirmedAt === 'number' ? 'ready' as const : 'needs_age' as const;
+    if (typeof data.ageConfirmedAt !== 'number' || !Number.isFinite(data.ageConfirmedAt) || data.ageConfirmedAt <= 0) return 'needs_age' as const;
+    return hasContentPolicyConsent(data) ? 'ready' as const : 'needs_policy' as const;
   });
 }

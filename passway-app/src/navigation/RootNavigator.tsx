@@ -11,6 +11,7 @@ import { ensureUserDoc, type AccountStage } from '../features/auth/api/ensureUse
 import DeletionRecoveryScreen from '../features/account/DeletionRecoveryScreen';
 import WelcomeScreen from '../features/onboarding/screens/WelcomeScreen';
 import AgeCheckScreen from '../features/onboarding/screens/AgeCheckScreen';
+import ContentPolicyScreen from '../features/onboarding/screens/ContentPolicyScreen';
 import UnderAgeScreen from '../features/onboarding/screens/UnderAgeScreen';
 import SettingsScreen from '../features/settings/screens/SettingsScreen';
 import { registerForPush, refreshPushToken } from '../services/notifications';
@@ -206,6 +207,7 @@ export default function RootNavigator() {
 
   if (user && stage === 'deleting') return <DeletionRecoveryScreen />;
   if (user && stage === 'under_minimum') return <UnderAgeScreen />;
+  if (user && stage === 'needs_policy') return <ContentPolicyScreen onResult={(accepted) => { if (accepted) setRetry((value) => value + 1); }} />;
   if (user && stage === 'needs_age') return <AgeCheckScreen onResult={ageConfirm.onResult} />;
 
   return (
