@@ -22,3 +22,9 @@ Authorship evidence SHA256:
 `request-test-response.json`: `0e4c4bd0cf9d4ec8cd658ecb026fd7eb80d858bf10179e50bb6d92bb05451b1c`
 `request-correction.json`: `e1f997dd00a6245f18b2323da0d981f683eb00ee96e1cd8279672251981227a4`
 `back-mock-correction.json`: `850a26b0f6d75bb154319507c43dc88418283bd8c6c26d4163c32f733d0a10d1`
+
+## Chat recovery audit before candidate freeze
+
+Gemini Argon High authored a functional-state correction that clears only the recovered message-load error and preserves unrelated connection/action errors. Two new actual-component regressions produced one failure and one pass before the source correction; the complete mobile suite is now 224/224 and TypeScript passes. The rejected stale-banner behavior is not relabeled as successful.
+
+Chat authorship evidence SHA256: `20842333d78542038e1e5cda931fd95a0522bc4e426adb746ef3049761c88fc6`.

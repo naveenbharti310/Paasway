@@ -184,3 +184,69 @@ test('RequestScreen expired/unavailable Start again does not re-decline', { time
   assert.equal(calls.length, 0);
   assert.deepEqual(JSON.parse(JSON.stringify(expiredHarness.navigationCalls)), [['replace', 'Generate']]);
 });
+
+test('ChatScreen messageLoadError true to false clears stale message-load error banner', { timeout: 2000 }, async () => {
+  let messageError = true;
+  const h = harness('features/chat/screens/ChatScreen.tsx', {
+    '../api/chats': {
+      useNotes: () => ({}),
+      useChatMessages: () => ({ messages: [], error: messageError }),
+    },
+  });
+
+  h.emit({
+    status: 'active',
+    userA: 'alice',
+    userB: 'bob',
+    userAName: 'Alice',
+    userBName: 'Bob',
+    nameA: 'Alice',
+    nameB: 'Bob',
+    names: { alice: 'Alice', bob: 'Bob' },
+  });
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load messages\. Try reopening this chat\./);
+
+  messageError = false;
+  h.render();
+  await tick();
+  h.render();
+  assert.doesNotMatch(h.texts(), /Could not load messages\. Try reopening this chat\./);
+});
+
+test('ChatScreen messageLoadError recovery preserves unrelated connection error', { timeout: 2000 }, async () => {
+  let messageError = true;
+  const h = harness('features/chat/screens/ChatScreen.tsx', {
+    '../api/chats': {
+      useNotes: () => ({}),
+      useChatMessages: () => ({ messages: [], error: messageError }),
+    },
+  });
+
+  h.emit({
+    status: 'active',
+    userA: 'alice',
+    userB: 'bob',
+    userAName: 'Alice',
+    userBName: 'Bob',
+    nameA: 'Alice',
+    nameB: 'Bob',
+    names: { alice: 'Alice', bob: 'Bob' },
+  });
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load messages\. Try reopening this chat\./);
+
+  h.listeners.at(-1).error(new Error('offline'));
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load this connection\./);
+
+  messageError = false;
+  h.render();
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load this connection\./);
+  assert.doesNotMatch(h.texts(), /Could not load messages\. Try reopening this chat\./);
+});

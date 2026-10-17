@@ -116,7 +116,7 @@ export default function ChatScreen() {
     return () => { active = false; unsubscribe(); };
   }, [connectionId, navigation, currentUserId]);
 
-  useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); }, [messageLoadError]);
+  useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); else setError((prev) => (prev === 'Could not load messages. Try reopening this chat.' ? null : prev)); }, [messageLoadError]);
 
   useEffect(() => {
     if (replyingTo && !messages.some((message) => message.messageId === replyingTo.messageId)) setReplyingTo(null);
