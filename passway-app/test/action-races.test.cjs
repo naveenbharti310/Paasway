@@ -33,3 +33,220 @@ test('repeated Delete taps open one dialog and duplicate confirmation runs one d
 test('cancelled delete confirmation releases dialog ownership without deleting anything',()=>{const h=harness('features/settings/screens/SettingsScreen.tsx');h.find('delete-account').props.onPress();h.alerts[0][2].find(b=>b.style==='cancel').onPress();h.find('delete-account').props.onPress();assert.equal(h.alerts.length,2)});
 test('failed settings sign-out can retry without leaving account controls stuck',async()=>{let calls=0;const h=harness('features/settings/screens/SettingsScreen.tsx',{'@react-native-firebase/auth':{signOut:async()=>{if(++calls===1)throw Error('offline')}}});await h.find('sign-out').props.onPress();assert.equal(h.find('sign-out').props.loading,false);await h.find('sign-out').props.onPress();assert.equal(calls,2)});
 test('age sign-out failure is handled and eligibility guard is released',async()=>{let calls=0;const h=harness('features/onboarding/screens/AgeCheckScreen.tsx',{'@react-native-firebase/auth':{signOut:async()=>{if(++calls===1)throw Error('offline')}}});await h.label('Sign out').props.onPress();assert.match(h.texts(),/Could not sign out/);await h.label('Sign out').props.onPress();assert.equal(calls,2)});
+
+test('RequestScreen repeated back submits one decline then one successful navigation', { timeout: 2000 }, async () => {
+  const pending = deferred();
+  const calls = [];
+  const h = harness(`${pairing}RequestScreen.tsx`, {
+    '../api/connections': {
+      respondToRequest: (payload) => {
+        calls.push(payload);
+        return pending.promise;
+      },
+    },
+  });
+
+  h.back();
+  h.back();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), { requestId: 'request1', accept: false });
+  assert.equal(h.navigationCalls.length, 0);
+
+  pending.resolve({});
+  await tick();
+  h.render();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.navigationCalls)), [['replace', 'Generate']]);
+});
+
+test('RequestScreen decline failure stays then explicit retry succeeds', { timeout: 2000 }, async () => {
+  const first = deferred();
+  const second = deferred();
+  const calls = [];
+  const h = harness(`${pairing}RequestScreen.tsx`, {
+    '../api/connections': {
+      respondToRequest: (payload) => {
+        calls.push(payload);
+        return calls.length === 1 ? first.promise : second.promise;
+      },
+    },
+  });
+
+  h.back();
+  first.reject(new Error('network failure'));
+  await tick();
+  h.render();
+
+  assert.equal(calls.length, 1);
+  assert.equal(h.navigationCalls.length, 0);
+  assert.match(h.texts(), /Could not respond to the request\. Try again\./);
+  assert.equal(h.find('decline').props.disabled, false);
+
+  const retry = h.find('decline').props.onPress();
+  second.resolve({});
+  await retry;
+  await tick();
+  h.render();
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[1])), { requestId: 'request1', accept: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(h.navigationCalls)), [['replace', 'Generate']]);
+});
+
+test('RequestScreen back while accept pending does not decline and navigates once after success', { timeout: 2000 }, async () => {
+  const pending = deferred();
+  const calls = [];
+  const h = harness(`${pairing}RequestScreen.tsx`, {
+    '../api/connections': {
+      respondToRequest: (payload) => {
+        calls.push(payload);
+        return pending.promise;
+      },
+    },
+  });
+
+  const acceptPromise = h.find('accept').props.onPress();
+  h.back();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ requestId: 'request1', accept: true }]);
+  assert.equal(h.navigationCalls.length, 0);
+
+  pending.resolve({ connectionId: 'chat1' });
+  await acceptPromise;
+  await tick();
+  h.render();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ requestId: 'request1', accept: true }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.navigationCalls)), [
+    ['reset', { index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: 'chat1' } }] }],
+  ]);
+});
+
+test('RequestScreen explicit decline still navigates once', { timeout: 2000 }, async () => {
+  const pending = deferred();
+  const calls = [];
+  const h = harness(`${pairing}RequestScreen.tsx`, {
+    '../api/connections': {
+      respondToRequest: (payload) => {
+        calls.push(payload);
+        return pending.promise;
+      },
+    },
+  });
+
+  const declinePromise = h.find('decline').props.onPress();
+  pending.resolve({});
+  await declinePromise;
+  await tick();
+  h.render();
+
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [{ requestId: 'request1', accept: false }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.navigationCalls)), [['replace', 'Generate']]);
+});
+
+test('RequestScreen expired/unavailable Start again does not re-decline', { timeout: 2000 }, async () => {
+  const calls = [];
+  const unavailableHarness = harness(`${pairing}RequestScreen.tsx`, {
+    '../api/connections': {
+      respondToRequest: async (payload) => {
+        calls.push(payload);
+        return {};
+      },
+    },
+  });
+
+  unavailableHarness.emit({ status: 'declined' });
+  unavailableHarness.find('request-start-again').props.onPress();
+  assert.equal(calls.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(unavailableHarness.navigationCalls)), [['replace', 'Generate']]);
+
+  const now = Date.now();
+  const expiredHarness = harness(`${pairing}RequestScreen.tsx`, {
+    '@react-navigation/native': {
+      useRoute: () => ({
+        params: {
+          requestId: 'request1',
+          requesterName: 'Peer',
+          requestedAt: now - 20000,
+          tidCreatedAt: now - 25000,
+          expiresAt: now - 1000,
+        },
+      }),
+    },
+    '../api/connections': {
+      respondToRequest: async (payload) => {
+        calls.push(payload);
+        return {};
+      },
+    },
+  });
+
+  expiredHarness.find('request-start-again').props.onPress();
+  assert.equal(calls.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(expiredHarness.navigationCalls)), [['replace', 'Generate']]);
+});
+
+test('ChatScreen messageLoadError true to false clears stale message-load error banner', { timeout: 2000 }, async () => {
+  let messageError = true;
+  const h = harness('features/chat/screens/ChatScreen.tsx', {
+    '../api/chats': {
+      useNotes: () => ({}),
+      useChatMessages: () => ({ messages: [], error: messageError }),
+    },
+  });
+
+  h.emit({
+    status: 'active',
+    userA: 'alice',
+    userB: 'bob',
+    userAName: 'Alice',
+    userBName: 'Bob',
+    nameA: 'Alice',
+    nameB: 'Bob',
+    names: { alice: 'Alice', bob: 'Bob' },
+  });
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load messages\. Try reopening this chat\./);
+
+  messageError = false;
+  h.render();
+  await tick();
+  h.render();
+  assert.doesNotMatch(h.texts(), /Could not load messages\. Try reopening this chat\./);
+});
+
+test('ChatScreen messageLoadError recovery preserves unrelated connection error', { timeout: 2000 }, async () => {
+  let messageError = true;
+  const h = harness('features/chat/screens/ChatScreen.tsx', {
+    '../api/chats': {
+      useNotes: () => ({}),
+      useChatMessages: () => ({ messages: [], error: messageError }),
+    },
+  });
+
+  h.emit({
+    status: 'active',
+    userA: 'alice',
+    userB: 'bob',
+    userAName: 'Alice',
+    userBName: 'Bob',
+    nameA: 'Alice',
+    nameB: 'Bob',
+    names: { alice: 'Alice', bob: 'Bob' },
+  });
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load messages\. Try reopening this chat\./);
+
+  h.listeners.at(-1).error(new Error('offline'));
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load this connection\./);
+
+  messageError = false;
+  h.render();
+  await tick();
+  h.render();
+  assert.match(h.texts(), /Could not load this connection\./);
+  assert.doesNotMatch(h.texts(), /Could not load messages\. Try reopening this chat\./);
+});

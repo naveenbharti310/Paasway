@@ -25,7 +25,7 @@ import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 import { hasSeenWelcome, welcomeSeenNow } from '../services/onboarding';
 import useReducedMotion from '../hooks/useReducedMotion';
-import { diagnosticScreen } from '../services/diagnostics';
+import { diagnosticScreen, diagnosticsEnabled } from '../services/diagnostics';
 
 import type { RootStackParamList, AuthStackParamList } from './types';
 
@@ -48,28 +48,52 @@ export default function RootNavigator() {
   const [welcomeSeen, setWelcomeSeen] = useState(false);
 
   useEffect(() => {
+    type StartupPhase =
+      | 'auth_wait'
+      | 'welcome_check'
+      | 'ensure_user_doc'
+      | 'find_active_connection'
+      | 'complete'
+      | 'load_error'
+      | 'auth_error';
+    const STARTUP_TIMEOUT_MS = 20_000;
+    const ACTIVE_LOOKUP_BUDGET_MS = 1_000;
     let active = true;
     let version = 0;
     let pushListener: ReturnType<typeof Notifications.addPushTokenListener> | undefined;
     let timedOut = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let deadlineAt: number | undefined;
+    let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+    let phase: StartupPhase = 'auth_wait';
+    const setPhase = (next: StartupPhase) => {
+      phase = next;
+      if (diagnosticsEnabled) console.info(`[startup-phase] ${next}`);
+    };
+    const clearLookupTimer = () => { if (lookupTimer !== undefined) clearTimeout(lookupTimer); lookupTimer = undefined; };
     const clearDeadline = () => { if (deadline !== undefined) clearTimeout(deadline); deadline = undefined; };
+    const finishDeadlineBudget = () => { clearDeadline(); clearLookupTimer(); deadlineAt = undefined; };
     const armDeadline = () => {
       clearDeadline();
+      const now = Date.now();
+      const remaining = deadlineAt !== undefined ? Math.max(0, deadlineAt - now) : STARTUP_TIMEOUT_MS;
+      deadlineAt = now + remaining;
       deadline = setTimeout(() => {
         if (!active) return;
         timedOut = true;
         ++version; // Late network results must not replace the recovery screen.
-        clearDeadline();
+        finishDeadlineBudget();
         pushListener?.remove();
         pushListener = undefined;
+        if (diagnosticsEnabled) console.warn(`[startup-watchdog] ${phase}`);
         setSetupError('Loading your account took too long. Check your connection and try again.');
         setCheckingAuth(false);
-      }, 20_000);
+      }, remaining);
     };
     const loadUser = async (u: User | null) => {
       if (!active || timedOut) return;
       const currentVersion = ++version;
+      clearLookupTimer();
       if (deadline === undefined) armDeadline();
       pushListener?.remove();
       pushListener = undefined;
@@ -80,14 +104,39 @@ export default function RootNavigator() {
         let resume: string | null = null;
         let nextStage: AccountStage = 'needs_age';
         // Signed out: skip the welcome pages if this phone has already seen them.
-        if (!u) { const seen = await hasSeenWelcome(); if (active && currentVersion === version) setWelcomeSeen(seen); }
-        if (u) {
-          nextStage = await ensureUserDoc(u.uid);
-          // Open the chats list if any conversation is still active.
-          if (nextStage === 'ready') resume = await findActiveConnection(u.uid).catch(() => null);
+        if (!u) {
+          setPhase('welcome_check');
+          const seen = await hasSeenWelcome();
+          if (active && currentVersion === version) setWelcomeSeen(seen);
         }
-        if (!active || currentVersion !== version) return;
-        clearDeadline();
+        if (u) {
+          setPhase('ensure_user_doc');
+          nextStage = await ensureUserDoc(u.uid);
+          if (!active || timedOut || currentVersion !== version) return;
+          const remainingBudget = deadlineAt !== undefined ? Math.max(0, deadlineAt - Date.now()) : ACTIVE_LOOKUP_BUDGET_MS;
+          const lookupBudget = Math.min(ACTIVE_LOOKUP_BUDGET_MS, remainingBudget);
+          clearDeadline();
+          // Open the chats list if any conversation is still active.
+          if (nextStage === 'ready') {
+            setPhase('find_active_connection');
+            resume = await new Promise<string | null>((resolve) => {
+              let settled = false;
+              const finish = (value: string | null) => {
+                if (settled) return;
+                settled = true;
+                if (lookupTimer === timer) clearLookupTimer();
+                else clearTimeout(timer);
+                resolve(value);
+              };
+              const timer = setTimeout(() => finish(null), lookupBudget);
+              lookupTimer = timer;
+              findActiveConnection(u.uid).then(finish, () => finish(null));
+            });
+          }
+        }
+        if (!active || timedOut || currentVersion !== version) return;
+        finishDeadlineBudget();
+        setPhase('complete');
         if (u && nextStage === 'needs_age') {
           setAgeConfirm({
             onResult: (confirmed) => {
@@ -112,22 +161,25 @@ export default function RootNavigator() {
           });
         }
       } catch (err) {
-        if (!active || currentVersion !== version) return;
-        clearDeadline();
+        if (!active || timedOut || currentVersion !== version) return;
+        finishDeadlineBudget();
+        setPhase('load_error');
         setSetupError(errorMessage(err, 'Your account could not be loaded. Try again.'));
         setCheckingAuth(false);
       }
     };
     // Covers both a missing native auth callback and stalled setup requests.
+    setPhase('auth_wait');
     armDeadline();
     const unsubscribe = onAuthStateChanged(auth, loadUser, (err) => {
       if (!active || timedOut) return;
       ++version;
-      clearDeadline();
+      finishDeadlineBudget();
+      setPhase('auth_error');
       setSetupError(errorMessage(err, 'Sign in could not be checked.'));
       setCheckingAuth(false);
     });
-    return () => { active = false; ++version; clearDeadline(); unsubscribe(); pushListener?.remove(); };
+    return () => { active = false; ++version; finishDeadlineBudget(); unsubscribe(); pushListener?.remove(); };
   }, [retry]);
 
   if (setupError) {

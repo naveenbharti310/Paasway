@@ -9,7 +9,9 @@ function deferred() { let resolve, reject; const promise = new Promise((a,b) => 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(overrides={}) {
   let cursor=0, effectCursor=0, listener, authError, time=0, nextTimer=0, removed=0, unsubscribed=0;
-  const state=[],effects=[],timers=new Map(),pushed=[];
+  const state=[],effects=[],timers=new Map(),pushed=[],logs=[];
+  const recordPhaseLog=(...args)=>{const msg=args.join(' ');if(msg.startsWith('[startup-phase] ')||msg.startsWith('[startup-watchdog] '))logs.push(msg);};
+  const vmConsole={...console,info:recordPhaseLog,warn:recordPhaseLog};
   const react={useState(initial){const i=cursor++;if(!(i in state))state[i]=initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value}];},useEffect(fn,deps){const i=effectCursor++;const old=effects[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();effects[i]={deps,cleanup:fn()};}}};
   const runtime={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};
   const mock={
@@ -28,13 +30,13 @@ function harness(overrides={}) {
     '../services/errors':{errorMessage:(err,fallback)=>err?.message||fallback},
     '../theme/colors':{colors:{bg:'black',gold:'gold',accentFill:'gold',textPrimary:'white'}},
     '../hooks/useReducedMotion':{__esModule:true,default:()=>false},
-    '../services/diagnostics':{diagnosticScreen:()=>{}},
+    '../services/diagnostics':{diagnosticScreen:()=>{},diagnosticsEnabled:Boolean(overrides.diagnosticsEnabled)},
   };
   async function asyncNull(){return null} async function asyncReady(){return 'ready'} async function asyncFalse(){return false}
   const source=fs.readFileSync(path.join(__dirname,'../src/navigation/RootNavigator.tsx'),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020,jsx:ts.JsxEmit.ReactJSX}}).outputText;
   const m={exports:{}};
-  vm.runInNewContext(code,{module:m,exports:m.exports,require:name=>mock[name]||{__esModule:true,default:name},console,setTimeout(fn,delay){const id=++nextTimer;timers.set(id,{fn,at:time+delay});return id},clearTimeout:id=>timers.delete(id)});
+  vm.runInNewContext(code,{module:m,exports:m.exports,require:name=>mock[name]||{__esModule:true,default:name},console:vmConsole,Date:{now:()=>time},setTimeout(fn,delay){const id=++nextTimer;timers.set(id,{fn,at:time+delay});return id},clearTimeout:id=>timers.delete(id)});
   function render(){cursor=effectCursor=0;return m.exports.default()}
   function flatten(node){return !node||typeof node!=='object'?[]:[node,...[node.props?.children].flat(Infinity).flatMap(flatten)]}
   function find(id){const tree=render(),all=flatten(tree);const tagged=all.find(n=>n.props?.testID===id);if(tagged)return tagged;
@@ -44,12 +46,34 @@ function harness(overrides={}) {
   }
   function advance(ms){time+=ms;for(const [id,t] of [...timers])if(t.at<=time){timers.delete(id);t.fn()}}
   render();
-  return {notify:user=>listener(user),error:err=>authError(err),advance,render,find,unmount:()=>effects.forEach(e=>e.cleanup?.()),timers,stats:()=>({removed,unsubscribed,pushed})};
+  return {notify:user=>listener(user),error:err=>authError(err),advance,render,find,unmount:()=>effects.forEach(e=>e.cleanup?.()),timers,logs,stats:()=>({removed,unsubscribed,pushed,logs})};
 }
 
 test('startup exits loading with retry when native auth callback never arrives',()=>{const h=harness();h.advance(20001);assert.ok(h.find('startup-error'));assert.ok(h.find('startup-retry'));assert.equal(h.find('startup-loading'),undefined)});
 test('stalled account transaction has bounded visible loading',async()=>{const d=deferred();const h=harness({ensureUserDoc:()=>d.promise});void h.notify({uid:'a'});h.advance(20001);assert.ok(h.find('startup-error'));d.resolve('ready');await tick();assert.ok(h.find('startup-error'),'late completion must not erase recovery UI')});
-test('stalled active-chat lookup cannot hold startup indefinitely',async()=>{const d=deferred();const h=harness({findActiveConnection:()=>d.promise});void h.notify({uid:'a'});await tick();h.advance(20001);assert.ok(h.find('startup-error'));d.resolve(null);await tick();assert.ok(h.find('startup-error'))});
+test('stalled active-chat lookup cannot hold startup indefinitely and opens verified account on Generate',async()=>{
+  const d=deferred();
+  const h=harness({findActiveConnection:()=>d.promise});
+  void h.notify({uid:'a'});
+  await tick();
+  assert.ok(h.find('startup-loading'));
+  h.advance(999);
+  await tick();
+  assert.ok(h.find('startup-loading'));
+  h.advance(1);
+  await tick();
+  assert.equal(h.find('startup-error'),undefined);
+  assert.equal(h.find('startup-loading'),undefined);
+  const tree=h.render();
+  assert.equal(tree.type,'NavigationContainer');
+  assert.equal(tree.props.children.props.initialRouteName,'Generate');
+  assert.equal(h.timers.size,0);
+  h.advance(20000);
+  d.resolve('late-chat');
+  await tick();
+  assert.equal(h.find('startup-error'),undefined);
+  assert.equal(h.render().props.children.props.initialRouteName,'Generate');
+});
 test('stalled signed-out welcome storage offers recovery',async()=>{const d=deferred();const h=harness({hasSeenWelcome:()=>d.promise});void h.notify(null);h.advance(20001);assert.ok(h.find('startup-error'))});
 test('successful startup clears its watchdog',async()=>{const h=harness();await h.notify({uid:'a'});assert.equal(h.timers.size,0);h.advance(60000);assert.equal(h.find('startup-error'),undefined);assert.equal(h.render().type,'NavigationContainer')});
 test('retry creates a fresh guarded attempt',async()=>{let calls=0;const h=harness({ensureUserDoc:()=>++calls===1?new Promise(()=>{}):Promise.resolve('ready')});void h.notify({uid:'a'});h.advance(20001);h.find('startup-retry').props.onPress();h.render();await h.notify({uid:'a'});assert.equal(h.find('startup-error'),undefined);assert.equal(h.render().type,'NavigationContainer');assert.equal(h.timers.size,0)});
@@ -63,9 +87,161 @@ test('an ordinary account error clears the watchdog',async()=>{const h=harness({
 test('native auth error clears the watchdog',()=>{const h=harness();h.error(new Error('native auth failed'));assert.ok(h.find('startup-error'));assert.equal(h.timers.size,0)});
 test('a later auth event after a completed session gets a new deadline',async()=>{const h=harness({ensureUserDoc:uid=>uid==='a'?Promise.resolve('ready'):new Promise(()=>{})});await h.notify({uid:'a'});h.advance(30000);void h.notify({uid:'b'});h.advance(20001);assert.ok(h.find('startup-error'))});
 
+test('diagnostics disabled emits no startup phase or watchdog logs',async()=>{
+  const stalled=harness();
+  stalled.advance(20001);
+  assert.ok(stalled.find('startup-error'));
+  assert.deepEqual(stalled.logs,[]);
+
+  const ok=harness();
+  await ok.notify({uid:'user-1'});
+  assert.equal(ok.render().type,'NavigationContainer');
+  assert.deepEqual(ok.logs,[]);
+});
+
+test('diagnostics classifies missing auth, welcome, ensure_user_doc, and find_active_connection watchdog stalls',async()=>{
+  const missingAuth=harness({diagnosticsEnabled:true});
+  missingAuth.advance(20001);
+  assert.deepEqual(missingAuth.logs,['[startup-phase] auth_wait','[startup-watchdog] auth_wait']);
+
+  const welcomePending=deferred();
+  const welcomeStall=harness({diagnosticsEnabled:true,hasSeenWelcome:()=>welcomePending.promise});
+  void welcomeStall.notify(null);
+  welcomeStall.advance(20001);
+  assert.deepEqual(welcomeStall.logs,['[startup-phase] auth_wait','[startup-phase] welcome_check','[startup-watchdog] welcome_check']);
+
+  const docPending=deferred();
+  const profileStall=harness({diagnosticsEnabled:true,ensureUserDoc:()=>docPending.promise});
+  void profileStall.notify({uid:'secret-uid-1'});
+  profileStall.advance(20001);
+  assert.deepEqual(profileStall.logs,['[startup-phase] auth_wait','[startup-phase] ensure_user_doc','[startup-watchdog] ensure_user_doc']);
+  assert.doesNotMatch(profileStall.logs.join(' '),/secret-uid-1/);
+
+  const lookupPending=deferred();
+  const lookupStall=harness({diagnosticsEnabled:true,findActiveConnection:()=>lookupPending.promise});
+  void lookupStall.notify({uid:'secret-uid-2'});
+  await tick();
+  lookupStall.advance(1000);
+  await tick();
+  assert.deepEqual(lookupStall.logs,['[startup-phase] auth_wait','[startup-phase] ensure_user_doc','[startup-phase] find_active_connection','[startup-phase] complete']);
+  assert.doesNotMatch(lookupStall.logs.join(' '),/secret-uid-2/);
+});
+
+test('older user resolving while newer user stalls does not change current phase or run stale lookup',async()=>{
+  const oldDoc=deferred();
+  const newDoc=deferred();
+  const lookups=[];
+  const h=harness({
+    diagnosticsEnabled:true,
+    ensureUserDoc:uid=>uid==='old-uid'?oldDoc.promise:newDoc.promise,
+    findActiveConnection:async uid=>{lookups.push(uid);return null;},
+  });
+  void h.notify({uid:'old-uid'});
+  void h.notify({uid:'new-uid'});
+  oldDoc.resolve('ready');
+  await tick();
+  assert.deepEqual(lookups,[]);
+  assert.deepEqual(h.logs,['[startup-phase] auth_wait','[startup-phase] ensure_user_doc','[startup-phase] ensure_user_doc']);
+  h.advance(20001);
+  assert.ok(h.find('startup-error'));
+  assert.deepEqual(h.logs,['[startup-phase] auth_wait','[startup-phase] ensure_user_doc','[startup-phase] ensure_user_doc','[startup-watchdog] ensure_user_doc']);
+  assert.doesNotMatch(h.logs.join(' '),/old-uid|new-uid/);
+});
+
 test('Sign out after a deadline starts a fresh signed-out subscription',async()=>{const h=harness();h.advance(20001);h.find('startup-signout').props.onPress();await tick();h.render();await h.notify(null);assert.equal(h.find('startup-error'),undefined);assert.equal(h.render().type,'NavigationContainer');assert.equal(h.stats().unsubscribed,1)});
 test('failed recovery Sign out remains retryable without an unhandled rejection',async()=>{const h=harness({signOut:async()=>{throw new Error('offline signout')}});h.advance(20001);h.find('startup-signout').props.onPress();await tick();assert.ok(h.find('startup-error'));assert.ok(h.find('startup-retry'));assert.equal(h.timers.size,0)});
 test('a deleting account opens recovery instead of the normal application',async()=>{const h=harness({ensureUserDoc:async()=>'deleting'});await h.notify({uid:'a'});assert.equal(h.render().type,'../features/account/DeletionRecoveryScreen');assert.equal(h.find('startup-loading'),undefined)});
+
+test('successful active-chat lookup within budget opens Chats and cleans up lookup timer',async()=>{
+  const d=deferred();
+  const h=harness({findActiveConnection:()=>d.promise});
+  void h.notify({uid:'a'});
+  await tick();
+  h.advance(400);
+  d.resolve('conn-42');
+  await tick();
+  assert.equal(h.find('startup-error'),undefined);
+  const tree=h.render();
+  assert.equal(tree.type,'NavigationContainer');
+  assert.equal(tree.props.children.props.initialRouteName,'Chats');
+  assert.equal(h.timers.size,0);
+});
+
+test('late active-chat lookup rejection or result cannot replace recovery, new user state, or leak timers',async()=>{
+  const lookupA=deferred();
+  const docB=deferred();
+  const h=harness({
+    ensureUserDoc:uid=>uid==='a'?Promise.resolve('ready'):docB.promise,
+    findActiveConnection:()=>lookupA.promise,
+  });
+  void h.notify({uid:'a'});
+  await tick();
+  assert.equal(h.timers.size,1);
+
+  void h.notify({uid:'b'});
+  await tick();
+  h.advance(20001);
+  assert.ok(h.find('startup-error'));
+  assert.equal(h.timers.size,0);
+
+  lookupA.reject(new Error('late lookup failure'));
+  await tick();
+  assert.ok(h.find('startup-error'));
+  assert.equal(h.timers.size,0);
+
+  const lateRejectAfterTimeout=deferred();
+  const h2=harness({findActiveConnection:()=>lateRejectAfterTimeout.promise});
+  void h2.notify({uid:'a'});
+  await tick();
+  h2.advance(1000);
+  await tick();
+  assert.equal(h2.render().props.children.props.initialRouteName,'Generate');
+  lateRejectAfterTimeout.reject(new Error('unhandled late rejection'));
+  await tick();
+  assert.equal(h2.find('startup-error'),undefined);
+  assert.equal(h2.render().props.children.props.initialRouteName,'Generate');
+  assert.equal(h2.timers.size,0);
+});
+
+test('profile completing near 20s caps optional lookup to remaining startup budget without failing verified account',async()=>{
+  const docDeferred=deferred();
+  const lookupDeferred=deferred();
+  const h=harness({
+    ensureUserDoc:()=>docDeferred.promise,
+    findActiveConnection:()=>lookupDeferred.promise,
+  });
+  void h.notify({uid:'a'});
+  h.advance(19600);
+  docDeferred.resolve('ready');
+  await tick();
+  assert.ok(h.find('startup-loading'));
+
+  h.advance(399);
+  await tick();
+  assert.ok(h.find('startup-loading'));
+
+  h.advance(1);
+  await tick();
+  assert.equal(h.find('startup-error'),undefined);
+  assert.equal(h.find('startup-loading'),undefined);
+  const tree=h.render();
+  assert.equal(tree.type,'NavigationContainer');
+  assert.equal(tree.props.children.props.initialRouteName,'Generate');
+  assert.equal(h.timers.size,0);
+});
+
+test('unmount during active-chat lookup cancels lookup timer immediately',async()=>{
+  const lookupDeferred=deferred();
+  const h=harness({findActiveConnection:()=>lookupDeferred.promise});
+  void h.notify({uid:'a'});
+  await tick();
+  assert.equal(h.timers.size,1);
+  h.unmount();
+  assert.equal(h.timers.size,0);
+  lookupDeferred.resolve('conn-1');
+  await tick();
+  assert.equal(h.timers.size,0);
+});
 
 test('age confirmation success revalidates then registers push',async()=>{let calls=0;const h=harness({ensureUserDoc:async()=>++calls===1?'needs_age':'ready'});await h.notify({uid:'a'});assert.equal(h.render().type,'../features/onboarding/screens/AgeCheckScreen');assert.deepEqual(h.stats().pushed,[]);await h.render().props.onResult(true);assert.equal(calls,2);assert.equal(h.render().type,'NavigationContainer');assert.deepEqual(h.stats().pushed,['a']);assert.equal(h.timers.size,0)});
 test('age confirmation with banned result remains recovery',async()=>{let calls=0;const h=harness({ensureUserDoc:async()=>{if(++calls===1)return 'needs_age';throw new Error('This account cannot use Passway right now.')}});await h.notify({uid:'a'});const onResult=h.render().props.onResult;await onResult(true);assert.ok(h.find('startup-error'));assert.deepEqual(h.stats().pushed,[]);assert.equal(h.timers.size,0);await onResult(true);assert.ok(h.find('startup-error'))});
