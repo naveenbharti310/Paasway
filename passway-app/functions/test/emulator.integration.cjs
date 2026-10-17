@@ -570,3 +570,25 @@ test('real legacy maintenance success timestamp and expired completion remain sa
   assert.ok((await ref.get()).data().lastRunAt < clock);
   assert.equal((await ref.get()).data().leaseOwner, undefined);
 });
+
+for (const policy of ['banned', 'reported']) {
+  test(`real confirmed-profile transaction inherits current ${policy} phone hold`, async () => {
+    const phone = '+919999900001';
+    const { phoneHash } = require('../lib/lib/accounts');
+    const { confirmAge } = require('../lib/handlers/accounts');
+    const hash = phoneHash(phone);
+    await collection('users').doc('alice').update({ ageConfirmedAt: 123, ageCheck: 'adult' });
+    await collection('accountHolds').doc(hash).set({ status: policy });
+    assert.equal((await confirmAge.run({ auth: { uid: 'alice', token: { phone_number: phone } }, data: { birthDate: '1990-01-01' } })).confirmed, true);
+    const user = (await collection('users').doc('alice').get()).data();
+    assert.equal(user.status, policy);
+    assert.equal(user.phoneHash, hash);
+    assert.equal(user.ageConfirmedAt, 123);
+    if (policy === 'banned') {
+      await assert.rejects(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }), { code: 'permission-denied' });
+      assert.equal((await collection('tids').get()).size, 0);
+    } else {
+      await assert.doesNotReject(call(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Alice' }));
+    }
+  });
+}
