@@ -19,7 +19,7 @@ const { sendPushNotification } = require('../lib/push');
 const originalFetch = global.fetch;
 let db;
 const uid = 'alice', other = 'bob';
-const call = (handler, data, user = uid) => handler.run({ auth: user ? { uid: user } : undefined, data });
+const call = (handler, data, user = uid) => handler.run({ auth: user ? { uid: user, token: { phone_number: "+15555550199" } } : undefined, data });
 function connection(status = 'active', extras = {}) {
   db.seed('connections/chat1', { connectionId: 'chat1', userA: uid, userB: other, userAName: 'Alice', userBName: 'Bob', status, createdAt: Date.now(), ...extras });
 }

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { HttpsError } from 'firebase-functions/v2/https';
 import type { DocumentData, Transaction } from 'firebase-admin/firestore';
 import { db } from './firebase';
+import type { CallerContext } from './callable';
 
 export const MINIMUM_AGE = 18;
 
@@ -25,7 +26,7 @@ export function hasAgeConfirmation(value: unknown): value is number {
 
 // Confirms an account can take part in connections: it exists, it has passed
 // the age check, it is not banned, and its phone number is not under a ban hold.
-export async function assertAccountActive(uid: string, tx: Transaction): Promise<DocumentData> {
+export async function assertAccountActive(uid: string, tx: Transaction, caller?: CallerContext): Promise<DocumentData> {
   const snap = await tx.get(userRef(uid));
   const user = snap.data();
   if (!snap.exists || !user) throw new HttpsError('failed-precondition', 'Your account is not ready. Sign in again.');
@@ -36,14 +37,26 @@ export async function assertAccountActive(uid: string, tx: Transaction): Promise
   if (user.ageCheck === 'under_minimum' || !hasAgeConfirmation(user.ageConfirmedAt)) {
     throw new HttpsError('failed-precondition', 'Confirm your age before connecting.');
   }
-  if (typeof user.phoneHash === 'string') {
-    const hold = await tx.get(holdRef(user.phoneHash));
-    const policy = hold.data();
+  // Acting callers must be checked against the verified token's current phone,
+  // not only a potentially missing or stale profile binding. Peer checks still
+  // use server-owned profile metadata; never accept a phone from request data.
+  const hashes = new Set<string>();
+  if (typeof user.phoneHash === 'string') hashes.add(user.phoneHash);
+  if (caller !== undefined) {
+    const phone = caller.phoneNumber;
+    if (typeof phone !== 'string' || !/^\+[1-9]\d{1,14}$/.test(phone)) {
+      throw new HttpsError('permission-denied', 'A verified phone number is required. Sign in again.');
+    }
+    hashes.add(phoneHash(phone));
+  }
+  // Deduplicate the usual matching binding. Reads remain in the participation
+  // transaction so a concurrent hold change retries rather than authorizing
+  // from a preflight check. No binding writes or global deletion gate here.
+  for (const hash of hashes) {
+    const policy = (await tx.get(holdRef(hash))).data();
     if (policy?.status === 'under_minimum') {
       throw new HttpsError('failed-precondition', 'Confirm your age before connecting.');
     }
-    // A stale account profile cannot override a phone-level eligibility hold.
-    // Unknown hold policies require explicit support, not implicit permission.
     if (policy && policy.status !== 'reported') {
       throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
     }

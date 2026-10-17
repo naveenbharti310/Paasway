@@ -12,7 +12,7 @@ import { MESSAGE_RETENTION_MS, MAX_MESSAGES_PER_MINUTE, MAX_MESSAGE_LENGTH, FLAG
 
 const ENDED = 'This connection has ended.';
 
-export const sendMessage = authedCallable(async (uid, data) => {
+export const sendMessage = authedCallable(async (uid, data, caller) => {
   const connectionId = documentId(data.connectionId, 'Connection');
   const content = text(data.content, 'Message', MAX_MESSAGE_LENGTH);
   // A reply only stores the ID of the earlier message, never a copy of its
@@ -40,7 +40,7 @@ export const sendMessage = authedCallable(async (uid, data) => {
   if (!existing && !await withinRateLimit(uid, 'message', MAX_MESSAGES_PER_MINUTE, 60 * 1000)) throw new HttpsError('resource-exhausted', 'You are sending messages too quickly. Try again shortly.');
   const result = existing ? replay(existing) : await screenMessage(content, Math.max(0, (Date.now() - initialData.createdAt) / 1000));
   const committed = await db.runTransaction(async (tx) => {
-    const sender = await assertAccountActive(uid, tx);
+    const sender = await assertAccountActive(uid, tx, caller);
     const snap = await tx.get(ref);
     const connection = snap.data();
     if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
@@ -86,13 +86,13 @@ export const sendMessage = authedCallable(async (uid, data) => {
 
 // Message bodies are served only here, never through direct client Firestore
 // reads. Safety-evidence retention must not extend participant read access.
-export const getMessages = authedCallable(async (uid, data) => {
+export const getMessages = authedCallable(async (uid, data, caller) => {
   const connectionId = documentId(data.connectionId, 'Connection');
   if (data.latest !== undefined && typeof data.latest !== 'boolean') throw new HttpsError('invalid-argument', 'Latest must be a boolean.');
   const ref = db.collection('connections').doc(connectionId);
   if (!await withinRateLimit(uid, 'message_read', 240, 60000)) throw new HttpsError('resource-exhausted', 'Messages are refreshing too quickly. Try again shortly.');
   const messages = await db.runTransaction(async (tx) => {
-    await assertAccountActive(uid, tx);
+    await assertAccountActive(uid, tx, caller);
     const connection = (await tx.get(ref)).data();
     if (!connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const other = otherParticipant(connection as Participants, uid);

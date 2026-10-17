@@ -8,7 +8,7 @@ import { documentId, isUnexpiredMillis } from '../lib/validation';
 import { connectionRef, endConnectionAs } from '../services/connections';
 import { runCoordinatedMaintenance } from '../services/cleanup';
 
-export const respondToRequest = authedCallable(async (uid, data) => {
+export const respondToRequest = authedCallable(async (uid, data, caller) => {
   const requestId = documentId(data.requestId, 'Request');
   if (typeof data.accept !== 'boolean') throw new HttpsError('invalid-argument', 'Choose whether to accept the request.');
   const requestRef = db.collection('connectionRequests').doc(requestId);
@@ -26,7 +26,7 @@ export const respondToRequest = authedCallable(async (uid, data) => {
       if (existing?.status !== 'active' || existing.userA !== uid || existing.userB !== pending.requesterId) {
         throw new HttpsError('failed-precondition', 'This request is no longer available.');
       }
-      const generator = await assertAccountActive(uid, tx);
+      const generator = await assertAccountActive(uid, tx, caller);
       const requester = await assertAccountActive(pending.requesterId, tx);
       assertSameTestCohort(generator, requester);
       await assertNotBlocked(tx, uid, pending.requesterId);
@@ -44,7 +44,7 @@ export const respondToRequest = authedCallable(async (uid, data) => {
       const now = Date.now();
       if (!isUnexpiredMillis(pending.expiresAt, now) || !isUnexpiredMillis(code.expiresAt, now)) throw new HttpsError('failed-precondition', 'This request has expired.');
       if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
-      const generator = await assertAccountActive(uid, tx);
+      const generator = await assertAccountActive(uid, tx, caller);
       const requester = await assertAccountActive(pending.requesterId, tx);
       assertSameTestCohort(generator, requester);
       await assertNotBlocked(tx, uid, pending.requesterId);

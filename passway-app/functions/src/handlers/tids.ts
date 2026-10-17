@@ -13,7 +13,7 @@ import { TID_TTL_MS, MESSAGE_RETENTION_MS, MAX_TID_GENERATIONS_PER_HOUR, MAX_RED
 
 const INACTIVE_CODE = 'That code is not active. Ask them to generate a new one.';
 
-export const generateTid = authedCallable(async (uid, data) => {
+export const generateTid = authedCallable(async (uid, data, caller) => {
   const { lat, lng } = coordinates(data.lat, data.lng);
   const displayName = text(data.displayName, 'Name', MAX_NAME_LENGTH);
   if (!await withinRateLimit(uid, 'generate', MAX_TID_GENERATIONS_PER_HOUR)) {
@@ -23,7 +23,7 @@ export const generateTid = authedCallable(async (uid, data) => {
     const tid = randomTid();
     const ref = db.collection('tids').doc(tid);
     const result = await db.runTransaction(async (tx) => {
-      await assertAccountActive(uid, tx);
+      await assertAccountActive(uid, tx, caller);
       const existing = await tx.get(ref);
       if (existing.exists) return null;
       const createdAt = Date.now();
@@ -36,7 +36,7 @@ export const generateTid = authedCallable(async (uid, data) => {
   throw new HttpsError('resource-exhausted', 'Could not allocate a code. Try again.');
 });
 
-export const redeemTid = authedCallable(async (uid, data) => {
+export const redeemTid = authedCallable(async (uid, data, caller) => {
   const tid = tidCode(data.tid);
   const { lat, lng } = coordinates(data.lat, data.lng);
   const displayName = text(data.displayName, 'Name', MAX_NAME_LENGTH);
@@ -55,7 +55,7 @@ export const redeemTid = authedCallable(async (uid, data) => {
   const requestRef = redemptionId === undefined ? db.collection('connectionRequests').doc()
     : db.collection('connectionRequests').doc(createHash('sha256').update(`${uid}\0${redemptionId}`).digest('hex'));
   const result = await db.runTransaction(async (tx) => {
-    const requester = await assertAccountActive(uid, tx);
+    const requester = await assertAccountActive(uid, tx, caller);
     const prior = redemptionId === undefined ? undefined : (await tx.get(requestRef)).data();
     const code = (await tx.get(tidRef)).data();
     const now = Date.now();
