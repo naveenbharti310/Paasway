@@ -25,7 +25,7 @@ import EndedScreen from '../features/connections/screens/EndedScreen';
 import { colors } from '../theme/colors';
 import { hasSeenWelcome, welcomeSeenNow } from '../services/onboarding';
 import useReducedMotion from '../hooks/useReducedMotion';
-import { diagnosticScreen } from '../services/diagnostics';
+import { diagnosticScreen, diagnosticsEnabled } from '../services/diagnostics';
 
 import type { RootStackParamList, AuthStackParamList } from './types';
 
@@ -48,11 +48,24 @@ export default function RootNavigator() {
   const [welcomeSeen, setWelcomeSeen] = useState(false);
 
   useEffect(() => {
+    type StartupPhase =
+      | 'auth_wait'
+      | 'welcome_check'
+      | 'ensure_user_doc'
+      | 'find_active_connection'
+      | 'complete'
+      | 'load_error'
+      | 'auth_error';
     let active = true;
     let version = 0;
     let pushListener: ReturnType<typeof Notifications.addPushTokenListener> | undefined;
     let timedOut = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let phase: StartupPhase = 'auth_wait';
+    const setPhase = (next: StartupPhase) => {
+      phase = next;
+      if (diagnosticsEnabled) console.info(`[startup-phase] ${next}`);
+    };
     const clearDeadline = () => { if (deadline !== undefined) clearTimeout(deadline); deadline = undefined; };
     const armDeadline = () => {
       clearDeadline();
@@ -63,6 +76,7 @@ export default function RootNavigator() {
         clearDeadline();
         pushListener?.remove();
         pushListener = undefined;
+        if (diagnosticsEnabled) console.warn(`[startup-watchdog] ${phase}`);
         setSetupError('Loading your account took too long. Check your connection and try again.');
         setCheckingAuth(false);
       }, 20_000);
@@ -80,14 +94,24 @@ export default function RootNavigator() {
         let resume: string | null = null;
         let nextStage: AccountStage = 'needs_age';
         // Signed out: skip the welcome pages if this phone has already seen them.
-        if (!u) { const seen = await hasSeenWelcome(); if (active && currentVersion === version) setWelcomeSeen(seen); }
-        if (u) {
-          nextStage = await ensureUserDoc(u.uid);
-          // Open the chats list if any conversation is still active.
-          if (nextStage === 'ready') resume = await findActiveConnection(u.uid).catch(() => null);
+        if (!u) {
+          setPhase('welcome_check');
+          const seen = await hasSeenWelcome();
+          if (active && currentVersion === version) setWelcomeSeen(seen);
         }
-        if (!active || currentVersion !== version) return;
+        if (u) {
+          setPhase('ensure_user_doc');
+          nextStage = await ensureUserDoc(u.uid);
+          if (!active || timedOut || currentVersion !== version) return;
+          // Open the chats list if any conversation is still active.
+          if (nextStage === 'ready') {
+            setPhase('find_active_connection');
+            resume = await findActiveConnection(u.uid).catch(() => null);
+          }
+        }
+        if (!active || timedOut || currentVersion !== version) return;
         clearDeadline();
+        setPhase('complete');
         if (u && nextStage === 'needs_age') {
           setAgeConfirm({
             onResult: (confirmed) => {
@@ -112,18 +136,21 @@ export default function RootNavigator() {
           });
         }
       } catch (err) {
-        if (!active || currentVersion !== version) return;
+        if (!active || timedOut || currentVersion !== version) return;
         clearDeadline();
+        setPhase('load_error');
         setSetupError(errorMessage(err, 'Your account could not be loaded. Try again.'));
         setCheckingAuth(false);
       }
     };
     // Covers both a missing native auth callback and stalled setup requests.
+    setPhase('auth_wait');
     armDeadline();
     const unsubscribe = onAuthStateChanged(auth, loadUser, (err) => {
       if (!active || timedOut) return;
       ++version;
       clearDeadline();
+      setPhase('auth_error');
       setSetupError(errorMessage(err, 'Sign in could not be checked.'));
       setCheckingAuth(false);
     });
