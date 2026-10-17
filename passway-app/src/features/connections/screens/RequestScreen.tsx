@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import { db } from '../../../firebase/client';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, usePreventRemove, useRoute, RouteProp } from '@react-navigation/native';
 import { respondToRequest } from '../api/connections';
 import { colors } from '../../../theme/colors';
 import type { RootStackParamList, RootNavigationProp } from '../../../navigation/types';
@@ -30,6 +30,7 @@ export default function RequestScreen() {
   }, [expiresAt, clock]);
   const responseInFlight = useRef(false);
   const [loading, setLoading] = useState<'accept' | 'decline' | null>(null);
+  const [exitTarget, setExitTarget] = useState<{ type: 'chat'; connectionId: string } | { type: 'generate' } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -50,24 +51,37 @@ export default function RequestScreen() {
   const elapsedSeconds = Math.max(0, Math.round((requestedAt - tidCreatedAt) / 1000));
 
   async function handleRespond(accept: boolean) {
-    if (responseInFlight.current || loading || (accept && (expired || unavailable))) return;
+    if (responseInFlight.current || loading || exitTarget || (accept && (expired || unavailable))) return;
     responseInFlight.current = true;
     setError(null);
     setLoading(accept ? 'accept' : 'decline');
     try {
       const result = await respondToRequest({ requestId, accept });
       if (accept && result?.connectionId) {
-        navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: result.connectionId } }] });
+        setExitTarget({ type: 'chat', connectionId: result.connectionId });
       } else {
-        navigation.replace('Generate');
+        setExitTarget({ type: 'generate' });
       }
     } catch (err) {
+      responseInFlight.current = false;
       setError(errorMessage(err, 'Could not respond to the request. Try again.'));
     } finally {
-      responseInFlight.current = false;
       setLoading(null);
     }
   }
+
+  usePreventRemove(!exitTarget && (Boolean(loading) || (!expired && !unavailable)), () => {
+    void handleRespond(false);
+  });
+
+  useEffect(() => {
+    if (!exitTarget) return;
+    if (exitTarget.type === 'chat') {
+      navigation.reset({ index: 1, routes: [{ name: 'Chats' }, { name: 'Chat', params: { connectionId: exitTarget.connectionId } }] });
+    } else {
+      navigation.replace('Generate');
+    }
+  }, [exitTarget, navigation]);
 
   return (
     <View style={styles.container}>
