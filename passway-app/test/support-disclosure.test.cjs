@@ -21,9 +21,12 @@ function support(deadline = (work) => work()) {
 
 test('phone disclosure includes authentication and abuse prevention without peer disclosure', () => {
   const s = support();
-  assert.match(s.PHONE_USE_DISCLOSURE, /sign in and help prevent abuse/);
+  assert.match(s.PHONE_USE_DISCLOSURE, /sign in, help prevent abuse/);
   assert.match(s.PHONE_USE_DISCLOSURE, /not shown to people you connect with/);
   assert.doesNotMatch(s.PHONE_USE_DISCLOSURE, /only to sign in|never shown to anyone/i);
+});
+test('phone-derived eligibility enforcement is disclosed before a number is supplied', () => {
+  assert.match(support().PHONE_USE_DISCLOSURE, /enforce age eligibility/);
 });
 test('both phone and settings screens use the same truthful phone disclosure', () => {
   for (const file of ['auth/screens/PhoneAuthScreen.tsx', 'settings/screens/SettingsScreen.tsx']) {

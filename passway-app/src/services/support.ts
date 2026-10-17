@@ -2,7 +2,7 @@ import { withDeadline } from './withDeadline';
 
 export const SUPPORT_EMAIL = 'Limerencetechnologies@gmail.com';
 export const SUPPORT_URI = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Passway support')}`;
-export const PHONE_USE_DISCLOSURE = 'Your phone number is used to sign in and help prevent abuse. It is not shown to people you connect with.';
+export const PHONE_USE_DISCLOSURE = 'Your phone number is used to sign in, help prevent abuse and enforce age eligibility. It is not shown to people you connect with.';
 
 type SupportResult = { opened: true } | { opened: false; message: string };
 
