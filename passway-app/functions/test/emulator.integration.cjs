@@ -626,3 +626,24 @@ for (const binding of ['legacy', 'stale']) {
     });
   }
 }
+
+
+// New UID/profile intentionally has no automatedTest flag. The server-owned
+// phone binding must survive reviewer deletion/re-registration semantics.
+for (const reviewer of ['alice', 'bob']) test('real transactions isolate recreated reviewer phone in either pairing role: ' + reviewer, async () => {
+  const {phoneHash} = require('../lib/lib/accounts');
+  await collection('users').doc(reviewer).update({phoneHash:phoneHash('+919999900001')});
+  await seedCode();
+  await assert.rejects(call(redeemTid, {tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'}, 'bob'), {code:'not-found'});
+  assert.equal((await collection('connectionRequests').get()).size, 0);
+  assert.equal((await collection('tids').doc('AB12').get()).data().status, 'active');
+});
+test('real transactions permit two recreated reviewer bindings without UID flags', async () => {
+  const {phoneHash} = require('../lib/lib/accounts');
+  await collection('users').doc('alice').update({phoneHash:phoneHash('+919999900001')});
+  await collection('users').doc('bob').update({phoneHash:phoneHash('+919999900002')});
+  await seedCode();
+  const request=await call(redeemTid,{tid:'AB12',lat:28.6,lng:77.2,displayName:'Bob'},'bob');
+  const result=await call(respondToRequest,{requestId:request.requestId,accept:true});
+  assert.equal((await collection('connections').doc(result.connectionId).get()).data().status,'active');
+});
