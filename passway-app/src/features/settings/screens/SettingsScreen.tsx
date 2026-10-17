@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, ScrollView, Platform, Linking } from 'react-native';
 import { signOut } from '@react-native-firebase/auth';
 import { auth } from '../../../firebase/client';
 import { getSavedName, saveDefaultName } from '../../profile/api/profile';
 import { deleteAccount } from '../../account/api/account';
 import { errorMessage } from '../../../services/errors';
+import { PHONE_USE_DISCLOSURE, SUPPORT_EMAIL, openSupportEmail } from '../../../services/support';
 import { colors } from '../../../theme/colors';
 import ScreenHeader from '../../../components/ScreenHeader';
 import LabeledField from '../../../components/LabeledField';
@@ -30,6 +31,29 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const supportInFlight = useRef(false);
+  const mounted = useRef(true);
+  const [openingSupport, setOpeningSupport] = useState(false);
+  const [supportMessage, setSupportMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  async function handleSupport() {
+    if (supportInFlight.current) return;
+    supportInFlight.current = true;
+    setOpeningSupport(true);
+    setSupportMessage(null);
+    try {
+      const result = await openSupportEmail((uri) => Linking.openURL(uri));
+      if (mounted.current && !result.opened) setSupportMessage(result.message);
+    } finally {
+      supportInFlight.current = false;
+      if (mounted.current) setOpeningSupport(false);
+    }
+  }
 
   useEffect(() => {
     if (!uid) return;
@@ -125,10 +149,17 @@ export default function SettingsScreen() {
 
       <Text style={styles.section}>ACCOUNT</Text>
       <View style={styles.card}>
-        <Text style={styles.helper}>Your phone number is used only to sign in. It is never shown to anyone.</Text>
+        <Text style={styles.helper}>{PHONE_USE_DISCLOSURE}</Text>
         {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         <Button label="Sign out" testID="sign-out" variant="secondary" onPress={handleSignOut} loading={signingOut} disabled={deleting || saving} />
         <Button label="Delete account" variant="danger" onPress={confirmDelete} loading={deleting} disabled={saving || signingOut} testID="delete-account" />
+      </View>
+
+      <Text style={styles.section}>HELP</Text>
+      <View style={styles.card}>
+        <Text selectable style={styles.helper} testID="support-contact">{SUPPORT_EMAIL}</Text>
+        <Button label="Email support" variant="secondary" onPress={handleSupport} loading={openingSupport} disabled={openingSupport} testID="email-support" />
+        {supportMessage && <Text accessibilityRole="alert" style={styles.error} testID="support-error">{supportMessage}</Text>}
       </View>
     </ScrollView><BottomNav active="you" /></View>
   );

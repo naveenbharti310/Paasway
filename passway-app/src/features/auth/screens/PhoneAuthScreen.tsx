@@ -1,4 +1,5 @@
 import { errorMessage } from '../../../services/errors';
+import { PHONE_USE_DISCLOSURE } from '../../../services/support';
 import { useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import FormScreen from '../../../components/FormScreen';
@@ -82,7 +83,7 @@ export default function PhoneAuthScreen() {
         {!confirmation ? (
           <>
             <Text style={styles.title} accessibilityRole="header">Your phone number</Text>
-            <Text style={styles.helper}>Used only to sign in. It is never shown to anyone you connect with.</Text>
+            <Text style={styles.helper}>{PHONE_USE_DISCLOSURE}</Text>
             {diagnosticsEnabled && <Text style={styles.hint}>Internal diagnostic build: crash reports and screen/keyboard timing help investigate freezing. Phone numbers and chat text are not added to diagnostic logs.</Text>}
             {!usesTwoFactorSms && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
               <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use 99999 00001 or 99999 00002 with the code 123456.'}</Text>
