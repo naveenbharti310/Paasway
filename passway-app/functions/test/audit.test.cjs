@@ -566,3 +566,48 @@ test('redeem server anchor uses transaction time rather than restamping after no
     assert.equal(result.servedAt, db.read(`connectionRequests/${result.requestId}`).createdAt);
   } finally { Date.now = originalNow; }
 });
+
+// A valid historic confirmation must not skip authoritative phone policy or
+// leave a legacy profile unbound to its verified caller's phone-derived hold.
+test('confirmed legacy profile inherits a banned verified-phone hold before participation', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 123, ageCheck: 'adult' });
+  db.seed(`accountHolds/${hash}`, { status: 'banned' });
+  await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol');
+  await assert.rejects(callWithPhone(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Carol' }, 'carol'), { code: 'permission-denied' });
+  assert.equal(db.read('users/carol').status, 'banned');
+  assert.equal(db.read('users/carol').phoneHash, hash);
+});
+test('confirmed legacy profile inherits a review hold without resetting its age confirmation', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 123 });
+  db.seed(`accountHolds/${hash}`, { status: 'reported' });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol'), { confirmed: true });
+  assert.equal(db.read('users/carol').status, 'reported');
+  assert.equal(db.read('users/carol').phoneHash, hash);
+  assert.equal(db.read('users/carol').ageConfirmedAt, 123);
+});
+test('confirmed profile without phoneHash is bound so a subsequent ban cannot be skipped', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 123 });
+  await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol');
+  assert.equal(db.read('users/carol').phoneHash, hash);
+  db.seed(`accountHolds/${hash}`, { status: 'banned' });
+  await assert.rejects(callWithPhone(generateTid, { lat: 28.6, lng: 77.2, displayName: 'Carol' }, 'carol'), { code: 'permission-denied' });
+});
+test('verified caller phone replaces stale hash before inherited policy is checked', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 123, ageCheck: 'adult', phoneHash: 'old-phone-hash' });
+  db.seed(`accountHolds/${hash}`, { status: 'banned' });
+  await callWithPhone(confirmAge, { birthDate: adultBirth }, 'carol');
+  assert.equal(db.read('users/carol').phoneHash, hash);
+  assert.equal(db.read('users/carol').status, 'banned');
+});
+test('ordinary confirmed-age retry stays idempotent even if a different DOB is supplied', async () => {
+  const hash = accounts.phoneHash('+919876543210');
+  db.seed('users/carol', { status: 'active', ageConfirmedAt: 123, ageCheck: 'adult', phoneHash: hash });
+  assert.deepEqual(await callWithPhone(confirmAge, { birthDate: childBirth }, 'carol'), { confirmed: true });
+  assert.equal(db.read('users/carol').ageConfirmedAt, 123);
+  assert.equal(db.read('users/carol').ageCheck, 'adult');
+  assert.equal(db.read(`accountHolds/${hash}`), undefined);
+});

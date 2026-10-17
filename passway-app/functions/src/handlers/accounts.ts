@@ -17,9 +17,9 @@ function strongerHold(current: DocumentData | undefined, next: HoldStatus): bool
   return !existing || SEVERITY[next] > SEVERITY[existing];
 }
 
-// Asks for a date of birth once. Only the result is stored, never the date.
-// An under age answer is held against the phone number until that person turns
-// the minimum age, so deleting the account and answering again does not help.
+// Confirm age once. Under-age phone holds also retain the eligibility expiry,
+// which can reveal the supplied birth date; this is not anonymous metadata.
+// Deletion/recreation must not bypass a phone-level eligibility restriction.
 export const confirmAge = authedCallable(async (uid, data, caller) => {
   const today = new Date();
   const birthDate = validBirthDate(data.birthDate, today);
@@ -40,7 +40,18 @@ export const confirmAge = authedCallable(async (uid, data, caller) => {
       throw new HttpsError('permission-denied', 'This account cannot use Passway right now.');
     }
     if (user.ageCheck === 'under_minimum') throw new HttpsError('failed-precondition', UNDER_MINIMUM);
-    if (hasAgeConfirmation(user.ageConfirmedAt) && hold?.status !== 'under_minimum') return { confirmed: true };
+    // An idempotent age answer is not permission to skip current phone policy.
+    // Legacy profiles may predate phoneHash; bind the verified caller before a
+    // later authorization path can rely on that field to find restrictive holds.
+    let status = user.status;
+    if (hold?.status === 'banned') status = 'banned';
+    else if (hold?.status === 'reported' && status === 'active') status = 'reported';
+    if (hasAgeConfirmation(user.ageConfirmedAt) && hold?.status !== 'under_minimum') {
+      if (status !== user.status || user.ageCheck !== 'adult' || (hash && user.phoneHash !== hash)) {
+        tx.update(ref, { ageCheck: 'adult', status, ...(hash ? { phoneHash: hash } : {}) });
+      }
+      return { confirmed: true };
+    }
     if (!adult || hold?.status === 'under_minimum') {
       tx.update(ref, { ageCheck: 'under_minimum', ageCheckedAt: now, ...(hash ? { phoneHash: hash } : {}) });
       if (hash && !adult && strongerHold(hold, 'under_minimum')) {
@@ -49,10 +60,7 @@ export const confirmAge = authedCallable(async (uid, data, caller) => {
       }
       return { confirmed: false };
     }
-    // A new account on a phone number with a ban or review hold inherits it.
-    let status = user.status;
-    if (hold?.status === 'banned') status = 'banned';
-    else if (hold?.status === 'reported' && status === 'active') status = 'reported';
+    // A first confirmation inherits the same authoritative phone policy.
     tx.update(ref, { ageConfirmedAt: now, ageCheck: 'adult', status, ...(hash ? { phoneHash: hash } : {}) });
     return { confirmed: true };
   });

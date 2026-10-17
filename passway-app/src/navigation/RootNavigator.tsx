@@ -41,6 +41,7 @@ export default function RootNavigator() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [stage, setStage] = useState<AccountStage>('needs_age');
+  const [ageConfirm, setAgeConfirm] = useState<{ onResult: (confirmed: boolean) => void }>({ onResult: () => {} });
   const [resumeConnectionId, setResumeConnectionId] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -66,9 +67,7 @@ export default function RootNavigator() {
         setCheckingAuth(false);
       }, 20_000);
     };
-    // Covers both a missing native auth callback and stalled setup requests.
-    armDeadline();
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const loadUser = async (u: User | null) => {
       if (!active || timedOut) return;
       const currentVersion = ++version;
       if (deadline === undefined) armDeadline();
@@ -89,6 +88,19 @@ export default function RootNavigator() {
         }
         if (!active || currentVersion !== version) return;
         clearDeadline();
+        if (u && nextStage === 'needs_age') {
+          setAgeConfirm({
+            onResult: (confirmed) => {
+              if (!active || timedOut || currentVersion !== version) return;
+              if (!confirmed) {
+                ++version;
+                setStage('under_minimum');
+                return;
+              }
+              return loadUser(u);
+            },
+          });
+        }
         setStage(nextStage);
         setResumeConnectionId(resume);
         setCheckingAuth(false);
@@ -105,7 +117,10 @@ export default function RootNavigator() {
         setSetupError(errorMessage(err, 'Your account could not be loaded. Try again.'));
         setCheckingAuth(false);
       }
-    }, (err) => {
+    };
+    // Covers both a missing native auth callback and stalled setup requests.
+    armDeadline();
+    const unsubscribe = onAuthStateChanged(auth, loadUser, (err) => {
       if (!active || timedOut) return;
       ++version;
       clearDeadline();
@@ -139,7 +154,7 @@ export default function RootNavigator() {
 
   if (user && stage === 'deleting') return <DeletionRecoveryScreen />;
   if (user && stage === 'under_minimum') return <UnderAgeScreen />;
-  if (user && stage === 'needs_age') return <AgeCheckScreen onResult={(confirmed) => setStage(confirmed ? 'ready' : 'under_minimum')} />;
+  if (user && stage === 'needs_age') return <AgeCheckScreen onResult={ageConfirm.onResult} />;
 
   return (
     <NavigationContainer theme={navTheme} onReady={() => diagnosticScreen(user ? (resumeConnectionId ? 'Chats' : 'Generate') : (welcomeSeen ? 'PhoneAuth' : 'Welcome'))}

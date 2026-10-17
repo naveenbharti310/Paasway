@@ -9,7 +9,7 @@ function deferred() { let resolve, reject; const promise = new Promise((a,b) => 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness(overrides={}) {
   let cursor=0, effectCursor=0, listener, authError, time=0, nextTimer=0, removed=0, unsubscribed=0;
-  const state=[],effects=[],timers=new Map();
+  const state=[],effects=[],timers=new Map(),pushed=[];
   const react={useState(initial){const i=cursor++;if(!(i in state))state[i]=initial;return [state[i],value=>{state[i]=typeof value==='function'?value(state[i]):value}];},useEffect(fn,deps){const i=effectCursor++;const old=effects[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();effects[i]={deps,cleanup:fn()};}}};
   const runtime={jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};
   const mock={
@@ -24,7 +24,7 @@ function harness(overrides={}) {
     '../features/connections/api/activeConnection':{findActiveConnection:overrides.findActiveConnection||asyncNull},
     '../features/auth/api/ensureUser':{ensureUserDoc:overrides.ensureUserDoc||asyncReady},
     '../services/onboarding':{hasSeenWelcome:overrides.hasSeenWelcome||asyncFalse,welcomeSeenNow:()=>false},
-    '../services/notifications':{registerForPush:async()=>{},refreshPushToken:async()=>{}},
+    '../services/notifications':{registerForPush:overrides.registerForPush||(async uid=>{pushed.push(uid)}),refreshPushToken:async()=>{}},
     '../services/errors':{errorMessage:(err,fallback)=>err?.message||fallback},
     '../theme/colors':{colors:{bg:'black',gold:'gold',accentFill:'gold',textPrimary:'white'}},
     '../hooks/useReducedMotion':{__esModule:true,default:()=>false},
@@ -44,7 +44,7 @@ function harness(overrides={}) {
   }
   function advance(ms){time+=ms;for(const [id,t] of [...timers])if(t.at<=time){timers.delete(id);t.fn()}}
   render();
-  return {notify:user=>listener(user),error:err=>authError(err),advance,render,find,unmount:()=>effects.forEach(e=>e.cleanup?.()),timers,stats:()=>({removed,unsubscribed})};
+  return {notify:user=>listener(user),error:err=>authError(err),advance,render,find,unmount:()=>effects.forEach(e=>e.cleanup?.()),timers,stats:()=>({removed,unsubscribed,pushed})};
 }
 
 test('startup exits loading with retry when native auth callback never arrives',()=>{const h=harness();h.advance(20001);assert.ok(h.find('startup-error'));assert.ok(h.find('startup-retry'));assert.equal(h.find('startup-loading'),undefined)});
@@ -66,3 +66,9 @@ test('a later auth event after a completed session gets a new deadline',async()=
 test('Sign out after a deadline starts a fresh signed-out subscription',async()=>{const h=harness();h.advance(20001);h.find('startup-signout').props.onPress();await tick();h.render();await h.notify(null);assert.equal(h.find('startup-error'),undefined);assert.equal(h.render().type,'NavigationContainer');assert.equal(h.stats().unsubscribed,1)});
 test('failed recovery Sign out remains retryable without an unhandled rejection',async()=>{const h=harness({signOut:async()=>{throw new Error('offline signout')}});h.advance(20001);h.find('startup-signout').props.onPress();await tick();assert.ok(h.find('startup-error'));assert.ok(h.find('startup-retry'));assert.equal(h.timers.size,0)});
 test('a deleting account opens recovery instead of the normal application',async()=>{const h=harness({ensureUserDoc:async()=>'deleting'});await h.notify({uid:'a'});assert.equal(h.render().type,'../features/account/DeletionRecoveryScreen');assert.equal(h.find('startup-loading'),undefined)});
+
+test('age confirmation success revalidates then registers push',async()=>{let calls=0;const h=harness({ensureUserDoc:async()=>++calls===1?'needs_age':'ready'});await h.notify({uid:'a'});assert.equal(h.render().type,'../features/onboarding/screens/AgeCheckScreen');assert.deepEqual(h.stats().pushed,[]);await h.render().props.onResult(true);assert.equal(calls,2);assert.equal(h.render().type,'NavigationContainer');assert.deepEqual(h.stats().pushed,['a']);assert.equal(h.timers.size,0)});
+test('age confirmation with banned result remains recovery',async()=>{let calls=0;const h=harness({ensureUserDoc:async()=>{if(++calls===1)return 'needs_age';throw new Error('This account cannot use Passway right now.')}});await h.notify({uid:'a'});const onResult=h.render().props.onResult;await onResult(true);assert.ok(h.find('startup-error'));assert.deepEqual(h.stats().pushed,[]);assert.equal(h.timers.size,0);await onResult(true);assert.ok(h.find('startup-error'))});
+test('stalled age revalidation times out into recovery',async()=>{const d=deferred();let calls=0;const h=harness({ensureUserDoc:()=>++calls===1?Promise.resolve('needs_age'):d.promise});await h.notify({uid:'a'});void h.render().props.onResult(true);assert.ok(h.find('startup-loading'));h.advance(20001);assert.ok(h.find('startup-error'));d.resolve('ready');await tick();assert.ok(h.find('startup-error'));assert.deepEqual(h.stats().pushed,[])});
+test('unconfirmed age false remains under_minimum without revalidation',async()=>{let calls=0;const h=harness({ensureUserDoc:async()=>++calls===1?'needs_age':'ready'});await h.notify({uid:'a'});const onResult=h.render().props.onResult;onResult(false);assert.equal(h.render().type,'../features/onboarding/screens/UnderAgeScreen');assert.equal(calls,1);assert.deepEqual(h.stats().pushed,[]);await onResult(true);assert.equal(h.render().type,'../features/onboarding/screens/UnderAgeScreen');assert.equal(calls,1);assert.deepEqual(h.stats().pushed,[])});
+test('stale age callbacks cannot authorize a replacement session',{timeout:3000},async()=>{const d=deferred();let oldCalls=0,revalidate=false;const h=harness({ensureUserDoc:uid=>uid==='old'?(++oldCalls,revalidate?d.promise:Promise.resolve('needs_age')):Promise.resolve('needs_age')});await h.notify({uid:'old'});const stale=h.render().props.onResult;await h.notify({uid:'new'});await stale(true);assert.equal(oldCalls,1);assert.equal(h.render().type,'../features/onboarding/screens/AgeCheckScreen');assert.deepEqual(h.stats().pushed,[]);await h.notify({uid:'old'});revalidate=true;void h.render().props.onResult(true);await h.notify({uid:'new'});d.resolve('ready');await tick();assert.equal(oldCalls,3);assert.equal(h.render().type,'../features/onboarding/screens/AgeCheckScreen');assert.deepEqual(h.stats().pushed,[])});
