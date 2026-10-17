@@ -64,10 +64,18 @@ export async function assertAccountActive(uid: string, tx: Transaction, caller?:
   return user;
 }
 
-// Server-controlled profile metadata: clients cannot create or change this
-// field under Firestore rules. Automated accounts cannot connect to real users.
+// Both bindings are server-controlled under Firestore rules. A fictional
+// reviewer may delete and recreate their Auth account, so an old UID's
+// automatedTest flag alone cannot be the durable isolation boundary. confirmAge
+// binds the verified token phone to phoneHash before participation is allowed.
+// These two numbers are already reserved by the SMS provider boundary.
+const reviewerPhoneHashes = new Set(['+919999900001', '+919999900002'].map(phoneHash));
+function inTestCohort(profile: DocumentData): boolean {
+  return profile.automatedTest === true ||
+    (typeof profile.phoneHash === 'string' && reviewerPhoneHashes.has(profile.phoneHash));
+}
 export function assertSameTestCohort(a: DocumentData, b: DocumentData): void {
-  if ((a.automatedTest === true) !== (b.automatedTest === true)) {
+  if (inTestCohort(a) !== inTestCohort(b)) {
     throw new HttpsError('not-found', 'That code is not active. Ask them to generate a new one.');
   }
 }
