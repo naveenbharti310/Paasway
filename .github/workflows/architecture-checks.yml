@@ -50,6 +50,8 @@ jobs:
       - run: npm ci --prefix functions
       - name: Verify dependency-gate policy cannot drift
         run: node --test ../.github/tests/dependency-gate.test.cjs
+      - name: Verify public support pages and retention disclosures
+        run: node --test ../.github/tests/public-support.test.cjs
       - run: npm run test:mobile
       - run: npm run typecheck && npm run typecheck --prefix functions
       - run: npm test --prefix functions
