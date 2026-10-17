@@ -4,6 +4,8 @@ export const SUPPORT_EMAIL = 'Limerencetechnologies@gmail.com';
 export const SUPPORT_URI = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Passway support')}`;
 export const PHONE_USE_DISCLOSURE = 'Your phone number is used to sign in, help prevent abuse and enforce age eligibility. It is not shown to people you connect with.';
 
+export const PHONE_AUTH_CONSENT = 'By choosing Send code, you agree to phone verification using 2Factor and Firebase Authentication (Google). Firebase phone verification sends your number to Google, which may store and use it to prevent abuse across Google services.';
+
 type SupportResult = { opened: true } | { opened: false; message: string };
 
 // Do not attach account identifiers, messages or logs to an external email
