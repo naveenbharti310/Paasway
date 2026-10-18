@@ -53,15 +53,26 @@ export async function saveNote(uid: string, connectionId: string, note: string):
 
 // Connection metadata is only an invalidation signal. Message bodies always
 // pass through the server-clock expiry endpoint, never a raw Firestore listener.
-function useServerMessages(connectionId: string, uid: string, latest: boolean): { messages: Message[]; error: boolean } {
+function useServerMessages(connectionId: string, uid: string, latest: boolean): { messages: Message[]; error: boolean; retry: () => void } {
   const [state, setState] = useState<{ scope: string; messages: Message[]; error: boolean; clock?: MessageClock }>({ scope: '', messages: [], error: false });
   const scope = JSON.stringify([uid, connectionId, latest]);
+  const [retryVersion, setRetryVersion] = useState(0);
   useEffect(() => {
     if (!uid || !connectionId) return;
-    let active = true, running = false, dirty = false, generation = 0;
-    async function refresh() {
-      if (!active) return;
-      dirty = true; generation++;
+    let active = true, readable = true, running = false, dirty = false, generation = 0;
+    let retryAttempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearRetry = () => { if (retryTimer !== undefined) clearTimeout(retryTimer); retryTimer = undefined; };
+    const invalidate = (error: boolean) => {
+      readable = false; generation++; dirty = false; clearRetry();
+      if (active) setState({ scope, messages: [], error });
+    };
+    async function refresh(resetBudget = true) {
+      if (!active || !readable) return;
+      if (resetBudget) { retryAttempt = 0; clearRetry(); }
+      // Active metadata updates queue another read; they must not discard a
+      // valid current response and starve the screen during a busy chat.
+      dirty = true;
       if (running) return;
       running = true;
       try {
@@ -75,31 +86,44 @@ function useServerMessages(connectionId: string, uid: string, latest: boolean): 
             const requestedAt = performance.now();
             const result = await withDeadline(() => getMessages({ connectionId, latest }), 15000);
             if (active && version === generation) setState({ scope, messages: result.messages, error: false, clock: { at: result.servedAt, receivedAt: requestedAt } });
-          } catch {
-            if (active && version === generation) setState({ scope, messages: [], error: true });
-            // No automatic failure retry loop or offline body fallback.
-            if (version === generation) dirty = false;
+          } catch (error: unknown) {
+            if (active && version === generation) {
+              setState({ scope, messages: [], error: true });
+              const rawCode = (error as { code?: unknown } | null)?.code;
+              const code = typeof rawCode === 'string' ? rawCode.replace(/^functions\//, '') : undefined;
+              const transient = ['unavailable', 'deadline-exceeded', 'internal', 'unknown', 'network-request-failed'].includes(code ?? 'unknown');
+              // Read-only recovery only. Never retry authorization, rate limits,
+              // or sends here; never restore bodies from an offline fallback.
+              if (!dirty && transient && retryAttempt < 2) {
+                const delay = 500 * 3 ** retryAttempt++;
+                retryTimer = setTimeout(() => { retryTimer = undefined; void refresh(false); }, delay);
+              }
+              if (!transient) dirty = false;
+            }
           }
         }
       } finally { running = false; }
     }
-    const stop = onSnapshot(doc(db, 'connections', connectionId), (snapshot) => {
-      if (snapshot.data()?.status !== 'active') { generation++; dirty = false; if (active) setState({ scope, messages: [], error: false }); return; }
+    const stop = onSnapshot(doc(db, 'connections', connectionId), { includeMetadataChanges: true }, (snapshot) => {
+      if (!active) return;
+      if (snapshot.data()?.status !== 'active') {
+        // A cache miss on a just-accepted chat is not a server revocation.
+        if (!snapshot.metadata.fromCache) invalidate(false);
+        return;
+      }
+      readable = true;
       void refresh();
-    }, () => {
-      generation++; dirty = false;
-      if (active) setState({ scope, messages: [], error: true });
-    });
+    }, () => invalidate(true));
     const foreground = AppState.addEventListener('change', (state) => { if (state === 'active') void refresh(); });
-    return () => { active = false; stop(); foreground.remove(); };
-  }, [scope, uid, connectionId, latest]);
-  return { messages: useVisibleMessages(state.scope === scope ? state.messages : [], state.scope === scope ? state.clock : undefined), error: state.scope === scope && state.error };
+    return () => { active = false; clearRetry(); stop(); foreground.remove(); };
+  }, [scope, uid, connectionId, latest, retryVersion]);
+  return { messages: useVisibleMessages(state.scope === scope ? state.messages : [], state.scope === scope ? state.clock : undefined), error: state.scope === scope && state.error, retry: () => setRetryVersion((value) => value + 1) };
 }
 
 export function useLastMessage(connectionId: string, uid = auth.currentUser?.uid ?? ''): Message | null {
   return useServerMessages(connectionId, uid, true).messages[0] ?? null;
 }
 
-export function useChatMessages(connectionId: string, uid: string): { messages: Message[]; error: boolean } {
+export function useChatMessages(connectionId: string, uid: string): { messages: Message[]; error: boolean; retry: () => void } {
   return useServerMessages(connectionId, uid, false);
 }

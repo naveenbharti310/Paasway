@@ -8,7 +8,7 @@ import { assertNotBlocked } from '../lib/blocks';
 import { withinRateLimit } from '../lib/rateLimits';
 import { documentId, text, otherParticipant, type Participants } from '../lib/validation';
 import { screenMessage, type ModerationResult } from '../moderation';
-import { notifyUser } from '../push';
+import { notifyUser, completeNotification } from '../push';
 import { MESSAGE_RETENTION_MS, MAX_MESSAGES_PER_MINUTE, MAX_MESSAGE_LENGTH, FLAGS_BEFORE_REVIEW } from '../constants';
 
 const ENDED = 'This connection has ended.';
@@ -82,7 +82,7 @@ export const sendMessage = authedCallable(async (uid, data, caller) => {
     // Every message carries its own expiry from the moment it is written, so
     // retention holds even if a connection is never ended.
     tx.create(messageRef, { messageId: messageRef.id, connectionId, senderId: uid, content, sentAt, moderationFlag: result.flag, earlyContactShare: result.earlyContactShare, deleteAt: new Date(sentAt + MESSAGE_RETENTION_MS), ...(replyTo ? { replyTo } : {}) });
-    tx.update(ref, { lastActivityAt: sentAt });
+    tx.update(ref, { lastActivityAt: sentAt, lastMessageId: messageRef.id });
     if (result.flag !== 'none') {
       // Repeated flagged messages put the sender in the review queue, the
       // same state a report produces. A ban is never lowered.
@@ -92,7 +92,7 @@ export const sendMessage = authedCallable(async (uid, data, caller) => {
     }
     return { recipient, created: true, result };
   });
-  if (committed.created) await notifyUser(committed.recipient, 'Passway', 'You have a new message', { type: 'message', connectionId });
+  if (committed.created) await completeNotification(notifyUser(committed.recipient, 'Passway', 'You have a new message', { type: 'message', connectionId }), caller?.defer);
   return committed.result;
 });
 

@@ -30,3 +30,14 @@ export async function notifyUser(uid: string, title: string, body: string, data:
     log.warn('Notification recipient could not be loaded.');
   }
 }
+
+// Preserve notification work through the host response lifecycle without making
+// a committed operation wait for push IO. Cloud Functions callers without a
+// platform hook retain the awaited fallback; this is not fire-and-forget.
+export async function completeNotification(work: Promise<void>, defer?: (work: Promise<unknown>) => void): Promise<void> {
+  const handled = work.catch(() => { log.warn('Notification work failed after commit.'); });
+  if (defer) {
+    try { defer(handled); return; } catch { /* Host did not retain it: await safely. */ }
+  }
+  await handled;
+}

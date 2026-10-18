@@ -1,7 +1,7 @@
 import { HttpsError } from 'firebase-functions/v2/https';
 import { getAppCheck } from 'firebase-admin/app-check';
 import { auth } from '../lib/firebase';
-import { runCallable, type CallableHandler } from '../lib/callable';
+import { runCallable, type CallableHandler, type CallerContext } from '../lib/callable';
 import { log } from '../lib/logger';
 import * as exported from '../index';
 import { readJson, assertAllowedOrigin } from './request';
@@ -59,7 +59,7 @@ export async function checkAppCheck(request: Request): Promise<void> {
 // Serves the Firebase callable protocol so the app can call the same handlers
 // on a host other than Cloud Functions. The request body is {"data": ...} and
 // the reply is {"result": ...} or {"error": {"status", "message"}}.
-export async function handleCallable(request: Request, name: string): Promise<Response> {
+export async function handleCallable(request: Request, name: string, defer?: CallerContext['defer']): Promise<Response> {
   const handler = callables.get(name);
   if (!handler) return reply(404, { error: { status: 'NOT_FOUND', message: 'Not found.' } });
   if (request.method !== 'POST') return reply(405, { error: { status: 'INVALID_ARGUMENT', message: 'Use POST.' } });
@@ -69,7 +69,7 @@ export async function handleCallable(request: Request, name: string): Promise<Re
     const callerAuth = await verifiedAuth(request);
     if (!callerAuth) throw new HttpsError('unauthenticated', 'Sign in first.');
     const body = await readJson(request) as { data?: unknown } | null;
-    const result = await runCallable(handler, callerAuth, body?.data);
+    const result = await runCallable(handler, callerAuth, body?.data, defer);
     return reply(200, { result: result ?? null });
   } catch (error) {
     if (error instanceof HttpsError) return failure(error);

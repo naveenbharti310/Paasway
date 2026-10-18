@@ -9,7 +9,7 @@ import { withinRateLimit } from '../lib/rateLimits';
 import { randomTid } from '../lib/tid';
 import { coordinates, text, tidCode, isUnexpiredMillis, documentId } from '../lib/validation';
 import { encodeGeohash, cellAndNeighbors } from '../geo';
-import { notifyUser } from '../push';
+import { notifyUser, completeNotification } from '../push';
 import { TID_TTL_MS, MESSAGE_RETENTION_MS, MAX_TID_GENERATIONS_PER_HOUR, MAX_REDEMPTION_ATTEMPTS_PER_HOUR, MAX_NAME_LENGTH } from '../constants';
 
 const INACTIVE_CODE = 'That code is not active. Ask them to generate a new one.';
@@ -98,7 +98,7 @@ export const redeemTid = authedCallable(async (uid, data, caller) => {
     tx.create(requestRef, { requestId: requestRef.id, tid, tidCreatedAt: code.createdAt, expiresAt: code.expiresAt, requesterId: uid, requesterName: displayName, generatorId: code.generatorId, generatorName: code.generatorName, status: 'pending', createdAt: servedAt, deleteAt: new Date(servedAt + MESSAGE_RETENTION_MS) });
     return { requestId: requestRef.id, generatorId: code.generatorId as string, expiresAt: code.expiresAt as number, servedAt, fresh: true };
   });
-  if (result.fresh) await notifyUser(result.generatorId, 'Passway', 'Someone nearby wants to connect', { type: 'request', requestId: result.requestId });
+  if (result.fresh) await completeNotification(notifyUser(result.generatorId, 'Passway', 'Someone nearby wants to connect', { type: 'request', requestId: result.requestId }), caller?.defer);
   return { requestId: result.requestId, expiresAt: result.expiresAt, servedAt: result.servedAt };
 });
 
