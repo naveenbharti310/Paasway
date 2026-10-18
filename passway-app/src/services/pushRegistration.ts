@@ -31,6 +31,10 @@ export function createPushRegistration<Token>(dependencies: RegistrationDependen
   function register(uid: string): Promise<void> {
     const existing = initial.get(uid);
     if (existing) return existing;
+    // A new explicit enrollment must reassert this device: another device may
+    // have replaced the single server-side account token since the last session.
+    // Keep refresh-event deduplication and in-flight single-flight unchanged.
+    saved.delete(uid);
     const revision = nextRevision(uid);
     const task = (async () => {
       if (!await dependencies.prepare()) return;
