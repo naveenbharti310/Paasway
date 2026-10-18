@@ -38,29 +38,28 @@ export const sendMessage = authedCallable(async (uid, data, caller) => {
   // carry a person-level block while this connection still says "active".
   // Keep the complete authorization recheck in the commit transaction too.
   const initialData = await db.runTransaction(async (tx) => {
-    assertContentPolicyConsent(await assertAccountActive(uid, tx, caller));
-    const snap = await tx.get(ref);
+    // Independent reads share one network wave. Every authorization check
+    // still completes inside the transaction before moderation or writes.
+    const [sender, snap] = await Promise.all([assertAccountActive(uid, tx, caller), tx.get(ref)]);
+    assertContentPolicyConsent(sender);
     const connection = snap.data();
     if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const recipient = otherParticipant(connection as Participants, uid);
-    await assertAccountActive(recipient, tx);
-    await assertNotBlocked(tx, uid, recipient);
+    await Promise.all([assertAccountActive(recipient, tx), assertNotBlocked(tx, uid, recipient)]);
     return connection;
   });
   const existing = key === undefined ? undefined : (await messageRef.get()).data();
   if (!existing && !await withinRateLimit(uid, 'message', MAX_MESSAGES_PER_MINUTE, 60 * 1000)) throw new HttpsError('resource-exhausted', 'You are sending messages too quickly. Try again shortly.');
   const result = existing ? replay(existing) : await screenMessage(content, Math.max(0, (Date.now() - initialData.createdAt) / 1000));
   const committed = await db.runTransaction(async (tx) => {
-    const sender = await assertAccountActive(uid, tx, caller);
+    const [sender, snap] = await Promise.all([assertAccountActive(uid, tx, caller), tx.get(ref)]);
     assertContentPolicyConsent(sender);
-    const snap = await tx.get(ref);
     const connection = snap.data();
     if (!snap.exists || !connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const recipient = otherParticipant(connection as Participants, uid);
-    await assertAccountActive(recipient, tx);
-    // A pair may already have more than one active conversation. Enforce
-    // the person-level block transactionally, including retry acknowledgements.
-    await assertNotBlocked(tx, uid, recipient);
+    // A pair may already have more than one active conversation. Both checks
+    // remain transactional, including retry acknowledgements.
+    await Promise.all([assertAccountActive(recipient, tx), assertNotBlocked(tx, uid, recipient)]);
     if (key !== undefined) {
       const previous = (await tx.get(messageRef)).data();
       if (previous) return { recipient, created: false, result: replay(previous) };
@@ -104,12 +103,11 @@ export const getMessages = authedCallable(async (uid, data, caller) => {
   const ref = db.collection('connections').doc(connectionId);
   if (!await withinRateLimit(uid, 'message_read', 240, 60000)) throw new HttpsError('resource-exhausted', 'Messages are refreshing too quickly. Try again shortly.');
   const messages = await db.runTransaction(async (tx) => {
-    await assertAccountActive(uid, tx, caller);
-    const connection = (await tx.get(ref)).data();
+    const [, snapshot] = await Promise.all([assertAccountActive(uid, tx, caller), tx.get(ref)]);
+    const connection = snapshot.data();
     if (!connection || connection.status !== 'active') throw new HttpsError('failed-precondition', ENDED);
     const other = otherParticipant(connection as Participants, uid);
-    await assertAccountActive(other, tx);
-    await assertNotBlocked(tx, uid, other);
+    await Promise.all([assertAccountActive(other, tx), assertNotBlocked(tx, uid, other)]);
     // Apply both visibility bounds before the limit: discarding future rows
     // afterwards could hide the genuine latest message or starve a whole page.
     const readAt = Date.now();

@@ -56,10 +56,16 @@ export const redeemTid = authedCallable(async (uid, data, caller) => {
   const requestRef = redemptionId === undefined ? db.collection('connectionRequests').doc()
     : db.collection('connectionRequests').doc(createHash('sha256').update(`${uid}\0${redemptionId}`).digest('hex'));
   const result = await db.runTransaction(async (tx) => {
-    const requester = await assertAccountActive(uid, tx, caller);
+    // These reads are independent. Keep them transactional, but avoid paying
+    // three sequential database round trips before validating the code.
+    const [requester, priorSnap, codeSnap] = await Promise.all([
+      assertAccountActive(uid, tx, caller),
+      redemptionId === undefined ? Promise.resolve(undefined) : tx.get(requestRef),
+      tx.get(tidRef),
+    ]);
     assertContentPolicyConsent(requester);
-    const prior = redemptionId === undefined ? undefined : (await tx.get(requestRef)).data();
-    const code = (await tx.get(tidRef)).data();
+    const prior = priorSnap?.data();
+    const code = codeSnap.data();
     const now = Date.now();
     if (prior) {
       // Recovery cannot change names, claim a new code incarnation, reverse a
@@ -75,10 +81,11 @@ export const redeemTid = authedCallable(async (uid, data, caller) => {
       throw new HttpsError('not-found', INACTIVE_CODE);
     }
     if (code.generatorId === uid) throw new HttpsError('invalid-argument', 'You cannot use your own code.');
-    const generator = await assertAccountActive(code.generatorId, tx);
+    const [generator] = await Promise.all([
+      assertAccountActive(code.generatorId, tx), assertNotBlocked(tx, uid, code.generatorId),
+    ]);
     assertContentPolicyConsent(generator);
     assertSameTestCohort(requester, generator);
-    await assertNotBlocked(tx, uid, code.generatorId);
     if (!cellAndNeighbors(code.geoHash).includes(encodeGeohash(lat, lng))) throw new HttpsError('not-found', INACTIVE_CODE);
     if (prior) {
       if (prior.status === 'accepted') {

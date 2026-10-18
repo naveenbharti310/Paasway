@@ -61,6 +61,7 @@ function useServerMessages(connectionId: string, uid: string, latest: boolean): 
     if (!uid || !connectionId) return;
     let active = true, readable = true, running = false, dirty = false, generation = 0;
     let retryAttempt = 0;
+    let messageRevision: string | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const clearRetry = () => { if (retryTimer !== undefined) clearTimeout(retryTimer); retryTimer = undefined; };
     const invalidate = (error: boolean) => {
@@ -106,12 +107,20 @@ function useServerMessages(connectionId: string, uid: string, latest: boolean): 
     }
     const stop = onSnapshot(doc(db, 'connections', connectionId), { includeMetadataChanges: true }, (snapshot) => {
       if (!active) return;
-      if (snapshot.data()?.status !== 'active') {
+      const metadata = snapshot.data();
+      if (metadata?.status !== 'active') {
         // A cache miss on a just-accepted chat is not a server revocation.
         if (!snapshot.metadata.fromCache) invalidate(false);
         return;
       }
       readable = true;
+      // Cache/online transitions and unrelated parent updates do not mean a
+      // new message. Only deduplicate a server-owned unique message revision;
+      // older deployments without that field retain the conservative refresh.
+      const revision = typeof metadata.lastMessageId === 'string' && metadata.lastMessageId
+        ? JSON.stringify([metadata.lastMessageId, metadata.lastActivityAt]) : undefined;
+      if (revision !== undefined && revision === messageRevision) return;
+      messageRevision = revision;
       void refresh();
     }, () => invalidate(true));
     const foreground = AppState.addEventListener('change', (state) => { if (state === 'active') void refresh(); });

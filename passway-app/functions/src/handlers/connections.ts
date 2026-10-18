@@ -27,12 +27,13 @@ export const respondToRequest = authedCallable(async (uid, data, caller) => {
       if (existing?.status !== 'active' || existing.userA !== uid || existing.userB !== pending.requesterId) {
         throw new HttpsError('failed-precondition', 'This request is no longer available.');
       }
-      const generator = await assertAccountActive(uid, tx, caller);
-      const requester = await assertAccountActive(pending.requesterId, tx);
+      const [generator, requester] = await Promise.all([
+        assertAccountActive(uid, tx, caller), assertAccountActive(pending.requesterId, tx),
+        assertNotBlocked(tx, uid, pending.requesterId),
+      ]);
       assertContentPolicyConsent(generator);
       assertContentPolicyConsent(requester);
       assertSameTestCohort(generator, requester);
-      await assertNotBlocked(tx, uid, pending.requesterId);
       return { connectionId: pending.connectionId };
     }
     if (pending.status === 'declined' && !data.accept) return {};
@@ -47,15 +48,22 @@ export const respondToRequest = authedCallable(async (uid, data, caller) => {
       const now = Date.now();
       if (!isUnexpiredMillis(pending.expiresAt, now) || !isUnexpiredMillis(code.expiresAt, now)) throw new HttpsError('failed-precondition', 'This request has expired.');
       if (pending.requesterId === uid) throw new HttpsError('failed-precondition', 'A connection needs two different people.');
-      const generator = await assertAccountActive(uid, tx, caller);
-      const requester = await assertAccountActive(pending.requesterId, tx);
+      const [generator, requester] = await Promise.all([
+        assertAccountActive(uid, tx, caller), assertAccountActive(pending.requesterId, tx),
+        assertNotBlocked(tx, uid, pending.requesterId),
+      ]);
       // Generating/redeeming a code is not a durable authorization to create
       // a connection later. Revalidate both profiles at the commit boundary.
       assertContentPolicyConsent(generator);
       assertContentPolicyConsent(requester);
       assertSameTestCohort(generator, requester);
-      await assertNotBlocked(tx, uid, pending.requesterId);
-      tx.create(newConnectionRef, { connectionId: newConnectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, status: 'active', createdAt: now, lastActivityAt: now });
+      // Authorization IO may outlive a nearly expired code. Recheck at the
+      // write boundary rather than accepting with the earlier preflight time.
+      const acceptedAt = Date.now();
+      if (!isUnexpiredMillis(pending.expiresAt, acceptedAt) || !isUnexpiredMillis(code.expiresAt, acceptedAt)) {
+        throw new HttpsError('failed-precondition', 'This request has expired.');
+      }
+      tx.create(newConnectionRef, { connectionId: newConnectionRef.id, userA: uid, userAName: pending.generatorName, userB: pending.requesterId, userBName: pending.requesterName, status: 'active', createdAt: acceptedAt, lastActivityAt: acceptedAt });
       tx.update(requestRef, { status: 'accepted', connectionId: newConnectionRef.id });
       tx.update(tidRef, { status: 'connected' });
       return { connectionId: newConnectionRef.id };
