@@ -30,13 +30,14 @@ export default function PhoneAuthScreen() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [confirmation, setConfirmation] = useState<PhoneConfirmation | null>(null);
+  const [recipient, setRecipient] = useState<string | null>(null);
   const authInFlight = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSendCode() {
     if (authInFlight.current || loading) return;
-    const number = indianNumber(phone);
+    const number = confirmation ? recipient : indianNumber(phone);
     if (!number) {
       setError('Enter a 10 digit Indian mobile number');
       return;
@@ -47,6 +48,7 @@ export default function PhoneAuthScreen() {
     try {
       // 2Factor verifies server-side; Firebase SMS remains available by build setting.
       const result = await beginPhoneSignIn(number);
+      setRecipient(number);
       setConfirmation(result);
       setCode('');
     } catch (err: unknown) {
@@ -89,7 +91,7 @@ export default function PhoneAuthScreen() {
             {!usesTwoFactorSms && process.env.EXPO_PUBLIC_SHOW_TEST_NUMBERS === '1' && (
               <Text style={styles.hint} testID="test-numbers">{'Trying the preview? Use 99999 00001 or 99999 00002 with the code 123456.'}</Text>
             )}
-            <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} onChangeText={setPhone} />
+            <LabeledField label="Indian mobile number (+91)" placeholder="98765 43210" keyboardType="phone-pad" textContentType="telephoneNumber" autoComplete="tel" returnKeyType="done" onSubmitEditing={handleSendCode} testID="phone-input" value={phone} editable={!loading} onChangeText={(value) => { if (!authInFlight.current) setPhone(value); }} />
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Text style={styles.notice} testID="phone-auth-consent">{PHONE_AUTH_CONSENT}</Text>
             <Button label="Send code" onPress={handleSendCode} loading={loading} testID="send-code" />
@@ -100,12 +102,12 @@ export default function PhoneAuthScreen() {
         ) : (
           <>
             <Text style={styles.title} accessibilityRole="header">Enter the code</Text>
-            <Text style={styles.helper}>{`We sent a 6 digit code to ${phone.trim()}`}</Text>
+            <Text style={styles.helper}>{`We sent a 6 digit code to ${recipient}`}</Text>
             <LabeledField label="verification code" placeholder="123456" keyboardType="number-pad" textContentType="oneTimeCode" autoComplete="sms-otp" returnKeyType="done" onSubmitEditing={handleVerifyCode} testID="verify-input" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, ''))} maxLength={6} />
             {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             <Button label="Verify" onPress={handleVerifyCode} loading={loading} testID="verify" />
             <Button label="Send another code" variant="secondary" onPress={handleSendCode} disabled={loading} />
-            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { if (authInFlight.current) return; setConfirmation(null); setCode(''); setError(null); }} />
+            <Button label="Use another number" variant="ghost" disabled={loading} onPress={() => { if (authInFlight.current) return; setConfirmation(null); setRecipient(null); setCode(''); setError(null); }} />
           </>
         )}
         <PrivacyLinks />
