@@ -206,13 +206,13 @@ test('ChatScreen messageLoadError true to false clears stale message-load error 
   });
   await tick();
   h.render();
-  assert.match(h.texts(), /Could not load messages\. Try reopening this chat\./);
+  assert.match(h.texts(), /Could not load messages\. Try again here\./);
 
   messageError = false;
   h.render();
   await tick();
   h.render();
-  assert.doesNotMatch(h.texts(), /Could not load messages\. Try reopening this chat\./);
+  assert.doesNotMatch(h.texts(), /Could not load messages\. Try again here\./);
 });
 
 test('ChatScreen messageLoadError recovery preserves unrelated connection error', { timeout: 2000 }, async () => {
@@ -236,7 +236,7 @@ test('ChatScreen messageLoadError recovery preserves unrelated connection error'
   });
   await tick();
   h.render();
-  assert.match(h.texts(), /Could not load messages\. Try reopening this chat\./);
+  assert.match(h.texts(), /Could not load messages\. Try again here\./);
 
   h.listeners.at(-1).error(new Error('offline'));
   await tick();
@@ -248,5 +248,7 @@ test('ChatScreen messageLoadError recovery preserves unrelated connection error'
   await tick();
   h.render();
   assert.match(h.texts(), /Could not load this connection\./);
-  assert.doesNotMatch(h.texts(), /Could not load messages\. Try reopening this chat\./);
+  assert.doesNotMatch(h.texts(), /Could not load messages\. Try again here\./);
 });
+
+test('message load failure offers retry inside the current chat',async()=>{let retries=0;const h=harness('features/chat/screens/ChatScreen.tsx',{'../api/chats':{useNotes:()=>({}),useChatMessages:()=>({messages:[],error:true,retry:()=>{retries++}})}});h.find('retry-messages').props.onPress();assert.equal(retries,1);assert.equal(h.navigationCalls.length,0);assert.doesNotMatch(h.texts(),/reopening this chat/);});

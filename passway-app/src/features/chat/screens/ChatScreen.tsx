@@ -64,7 +64,7 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const { params } = useRoute<ChatRouteProp>();
   const { connectionId } = params;
-  const { messages, error: messageLoadError } = useChatMessages(connectionId, auth.currentUser?.uid ?? '');
+  const { messages, error: messageLoadError, retry: retryMessages } = useChatMessages(connectionId, auth.currentUser?.uid ?? '');
   const [connection, setConnection] = useState<Connection | null>(null);
   const [draft, setDraft] = useState('');
   const messageAttempts = useRef(createMessageRetryState(newMessageId));
@@ -116,7 +116,7 @@ export default function ChatScreen() {
     return () => { active = false; unsubscribe(); };
   }, [connectionId, navigation, currentUserId]);
 
-  useEffect(() => { if (messageLoadError) setError('Could not load messages. Try reopening this chat.'); else setError((prev) => (prev === 'Could not load messages. Try reopening this chat.' ? null : prev)); }, [messageLoadError]);
+  useEffect(() => { if (messageLoadError) setError('Could not load messages. Try again here.'); else setError((prev) => (prev === 'Could not load messages. Try again here.' ? null : prev)); }, [messageLoadError]);
 
   useEffect(() => {
     if (replyingTo && !messages.some((message) => message.messageId === replyingTo.messageId)) setReplyingTo(null);
@@ -273,6 +273,7 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </View>
       {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+      {messageLoadError && <TouchableOpacity onPress={retryMessages} accessibilityRole="button" accessibilityLabel="Retry loading messages" testID="retry-messages"><Text style={styles.notice}>Try again</Text></TouchableOpacity>}
       {safetyNotice && <Text style={styles.notice}>Take your time before sharing contact details or moving to another app.</Text>}
       <FlatList
         ref={list}

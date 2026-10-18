@@ -50,6 +50,7 @@ export interface Connection {
   blockedBy?: string;
   endReason?: 'idle';
   lastActivityAt?: number;
+  lastMessageId?: string;
 }
 
 export interface Message {
